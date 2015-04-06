@@ -26,20 +26,32 @@ data Value s a
   = Repr {-# UNPACK #-} !(Ranked a)
   | Link {-# UNPACK #-} !(ST.Ref s (Value s a))
 
-data Ranked a = Ranked { rank :: {-# UNPACK #-} !Rank, unranked :: a }
+data Ranked a = Ranked {-# UNPACK #-} !Rank a
+
+rank :: Functor f => Lens' f (Ranked a) Rank
+rank =
+  lens
+  (\ (Ranked x _) -> x)
+  (\ (Ranked _ y) x -> Ranked x y)
+
+unranked :: Functor f => Lens' f (Ranked a) a
+unranked =
+  lens
+  (\ (Ranked _ y) -> y)
+  (\ (Ranked x _) y -> Ranked x y)
 
 type Rank = Word
 
 new :: a -> ST s (Ref s a)
-new = coerce . ST.new . Repr . Ranked minBound
+new = fmap Ref . ST.new . Repr . Ranked minBound
 
 read :: Ref s a -> ST s a
-read = fmap (unranked . repr) . semiprune
+read = fmap (get $ repr.unranked) . semiprune
 
 write :: Ref s a -> a -> ST s ()
 write ref x = do
   s <- semiprune ref
-  writeReprRef s $! Repr $! s^.repr&_2 .~ x
+  writeReprRef s $! Repr $! s^.repr&unranked .~ x
 
 union :: Ref s a -> Ref s a -> ST s ()
 union ref1 ref2 = do
@@ -57,9 +69,20 @@ union ref1 ref2 = do
 
 data Semipruned s a =
   Semipruned
-  { repr :: {-# UNPACK #-} !(Ranked a)
-  , reprRef :: {-# UNPACK #-} !(ST.Ref s (Value s a))
-  }
+  {-# UNPACK #-} !(Ranked a)
+  {-# UNPACK #-} !(ST.Ref s (Value s a))
+
+repr :: Functor f => Lens' f (Semipruned s a) (Ranked a)
+repr =
+  lens
+  (\ (Semipruned x _) -> x)
+  (\ (Semipruned _ y) x -> Semipruned x y)
+
+reprRef :: Functor f => Lens' f (Semipruned s a) (ST.Ref s (Value s a))
+reprRef =
+  lens
+  (\ (Semipruned _ y) -> y)
+  (\ (Semipruned x _) y -> Semipruned x y)
 
 semiprune :: Ref s a -> ST s (Semipruned s a)
 semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
@@ -71,4 +94,4 @@ semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
     pure s)
 
 writeReprRef :: Semipruned s a -> Value s a -> ST s ()
-writeReprRef = ST.write . view reprRef
+writeReprRef = ST.write . get reprRef
