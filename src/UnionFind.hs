@@ -46,7 +46,7 @@ new :: a -> ST s (Ref s a)
 new = fmap Ref . ST.new . Repr . Ranked minBound
 
 read :: Ref s a -> ST s a
-read = fmap (get $ repr.unranked) . semiprune
+read = mget $ semipruned.repr.unranked
 
 write :: Ref s a -> a -> ST s ()
 write ref x = do
@@ -83,6 +83,9 @@ reprRef =
   lens
   (\ (Semipruned _ y) -> y)
   (\ (Semipruned x _) y -> Semipruned x y)
+
+semipruned :: Effective (ST s) r f => Lens' f (Ref s a) (Semipruned s a)
+semipruned = mgetter semiprune
 
 semiprune :: Ref s a -> ST s (Semipruned s a)
 semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
