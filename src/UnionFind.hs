@@ -16,7 +16,8 @@ import Data.Coerce
 import Data.Function (($), fix)
 import Data.Ord
 import Data.Word
-import Prelude (($!), (/=), (+), minBound)
+import Lens
+import Prelude (($!), (/=), minBound)
 import qualified ST
 
 newtype Ref s a = Ref (ST.Ref s (Value s a))
@@ -38,21 +39,21 @@ read = fmap (unranked . repr) . semiprune
 write :: Ref s a -> a -> ST s ()
 write ref x = do
   s <- semiprune ref
-  writeReprRef s $! Repr $! (repr s) { unranked = x }
+  writeReprRef s $! Repr $! s^.repr&_2 .~ x
 
 union :: Ref s a -> Ref s a -> ST s ()
 union ref1 ref2 = do
   s1 <- semiprune ref1
   s2 <- semiprune ref2
-  when (reprRef s1 /= reprRef s2) $
-    case compare (rank $ repr s1) (rank $ repr s2) of
+  when (s1^.reprRef /= s2^.reprRef) $
+    case compare (s1^.repr.rank) (s2^.repr.rank) of
      LT ->
-       writeReprRef s1 $! Link $! reprRef s2
+       writeReprRef s1 $! Link $! s2^.reprRef
      EQ -> do
-       writeReprRef s1 $! Repr $! (repr s1) { rank = rank (repr s1) + 1 }
-       writeReprRef s2 $! Link $! reprRef s1
+       writeReprRef s1 $! Repr $! s1^.repr&rank +~ 1
+       writeReprRef s2 $! Link $! s1^.reprRef
      GT ->
-       writeReprRef s2 $! Link $! reprRef s1
+       writeReprRef s2 $! Link $! s1^.reprRef
 
 data Semipruned s a =
   Semipruned
@@ -66,8 +67,8 @@ semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
     pure $! Semipruned x ref
   Link ref' -> do
     s <- rec' ref'
-    ST.write ref $! Link $! reprRef s
+    ST.write ref $! Link $! s^.reprRef
     pure s)
 
 writeReprRef :: Semipruned s a -> Value s a -> ST s ()
-writeReprRef = ST.write . reprRef
+writeReprRef = ST.write . view reprRef
