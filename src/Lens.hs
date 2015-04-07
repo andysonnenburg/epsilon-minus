@@ -53,11 +53,11 @@ get l = getConst . l Const
 
 class (Monad m, Functor f) => Effective m r f | f -> m r where
   effective :: m r -> f a
-  default effective :: Coercible a b => a -> b
+  default effective :: Coercible (m r) (f a) => m r -> f a
   effective = coerce
   
   ineffective :: f a -> m r
-  default ineffective :: Coercible a b => a -> b
+  default ineffective :: Coercible (f a) (m r) => f a -> m r
   ineffective = coerce
 
 instance Effective Identity r (Const r)
@@ -72,7 +72,7 @@ mgetter k f s = effective (k s >>= ineffective . f)
 mget :: Applicative m => EffectiveGetter m a s a -> s -> m a
 mget l = coerce . l (Effect . Const . pure)
 
-(^!) :: Applicative m => s -> Lens (Effect m a) s t a b -> m a
+(^!) :: Applicative m => s -> EffectiveGetter m a s a -> m a
 (^!) = flip mget
 
 set :: Setter s t a b -> b -> s -> t
