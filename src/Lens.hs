@@ -8,6 +8,7 @@ module Lens
        , Lens
        , Lens'
        , Getter
+       , EffectiveGetter
        , Setter
        , lens
        , get
