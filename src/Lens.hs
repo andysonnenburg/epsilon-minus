@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -37,6 +38,8 @@ type Lens' f s a = Lens f s s a a
 
 type Getter r s a = Lens' (Const r) s a
 
+type EffectiveGetter m r s a = Lens' (Effect m r) s a
+
 type Setter s t a b = Lens Identity s t a b
 
 lens :: Functor f => (s -> a) -> (s -> b -> t) -> Lens f s t a b
@@ -50,22 +53,23 @@ get l = getConst . l Const
 
 class (Monad m, Functor f) => Effective m r f | f -> m r where
   effective :: m r -> f a
-  ineffective :: f a -> m r
-
-instance Effective Identity r (Const r) where
+  default effective :: Coercible a b => a -> b
   effective = coerce
+  
+  ineffective :: f a -> m r
+  default ineffective :: Coercible a b => a -> b
   ineffective = coerce
+
+instance Effective Identity r (Const r)
 
 newtype Effect m r a = Effect (Const (m r) a) deriving (Functor, Applicative)
 
-instance Monad m => Effective m r (Effect m r) where
-  effective = coerce
-  ineffective = coerce
+instance Monad m => Effective m r (Effect m r)
 
 mgetter :: Effective m r f => (s -> m a) -> Lens' f s a
 mgetter k f s = effective (k s >>= ineffective . f)
 
-mget :: Applicative m => Lens (Effect m a) s t a b -> s -> m a
+mget :: Applicative m => EffectiveGetter m a s a -> s -> m a
 mget l = coerce . l (Effect . Const . pure)
 
 (^!) :: Applicative m => s -> Lens (Effect m a) s t a b -> m a
