@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 module UnionFind
        ( Ref
@@ -45,14 +46,39 @@ type Rank = Word
 new :: a -> ST s (Ref s a)
 new = fmap Ref . ST.new . Repr . Ranked minBound
 
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   UnionFind.read x
+-- :}
+-- 'a'
 read :: Ref s a -> ST s a
-read = fmap (get $ repr.unranked) . semiprune
+read = mget $ semipruned.repr.unranked
 
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   UnionFind.write x 'b'
+--   UnionFind.read x
+-- :}
+-- 'b'
 write :: Ref s a -> a -> ST s ()
 write ref x = do
   s <- semiprune ref
   writeReprRef s $! Repr $! s^.repr&unranked .~ x
 
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   y <- UnionFind.new 'b'
+--   union x y
+--   UnionFind.write y 'c'
+--   UnionFind.read x
+-- :}
+-- 'c'
 union :: Ref s a -> Ref s a -> ST s ()
 union ref1 ref2 = do
   s1 <- semiprune ref1
@@ -83,6 +109,9 @@ reprRef =
   lens
   (\ (Semipruned _ y) -> y)
   (\ (Semipruned x _) y -> Semipruned x y)
+
+semipruned :: Effective (ST s) r f => Lens' f (Ref s a) (Semipruned s a)
+semipruned = mgetter semiprune
 
 semiprune :: Ref s a -> ST s (Semipruned s a)
 semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
