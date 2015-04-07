@@ -53,18 +53,17 @@ get l = getConst . l Const
 
 class (Monad m, Functor f) => Effective m r f | f -> m r where
   effective :: m r -> f a
-  default effective :: Coercible (m r) (f a) => m r -> f a
-  effective = coerce
-  
   ineffective :: f a -> m r
-  default ineffective :: Coercible (f a) (m r) => f a -> m r
-  ineffective = coerce
 
-instance Effective Identity r (Const r)
+instance Effective Identity r (Const r) where
+  effective = coerce
+  ineffective = coerce
 
 newtype Effect m r a = Effect (Const (m r) a) deriving (Functor, Applicative)
 
-instance Monad m => Effective m r (Effect m r)
+instance Monad m => Effective m r (Effect m r) where
+  effective = coerce
+  ineffective = coerce
 
 mgetter :: Effective m r f => (s -> m a) -> Lens' f s a
 mgetter k f s = effective (k s >>= ineffective . f)
