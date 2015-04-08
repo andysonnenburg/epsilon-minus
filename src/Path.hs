@@ -6,7 +6,6 @@ module Path
        , nil
        , fromList
        , uncons
-       , length
        , drop
        , lca
        , mlca
