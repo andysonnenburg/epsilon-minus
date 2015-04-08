@@ -1,0 +1,170 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+module Path
+       ( Path
+       , cons
+       , nil
+       , fromList
+       , uncons
+       , drop
+       , lca
+       , mlca
+       ) where
+
+import Data.Bool
+import Data.Eq
+import Data.Foldable
+import Data.Function
+import Data.Functor
+import Data.Functor.Identity
+import Data.Maybe (Maybe (..))
+import Data.Monoid
+import Data.Ord
+import Prelude (Num (..), Int, div, seq, undefined)
+import Text.Show
+
+-- $setup
+-- >>> import qualified Data.List as List
+-- >>> import Data.String
+-- >>> import qualified Path
+-- >>> import Test.QuickCheck
+
+data Path a
+  = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
+  | Nil deriving Eq
+
+instance Show a => Show (Path a) where
+  showsPrec p xs =
+    showParen (p > 10) $ showString "Path.fromList " . shows (toList xs)
+
+instance Functor Path where
+  fmap f = \ case
+    Cons n_t t xs -> Cons n_t (fmap f t) (fmap f xs)
+    Nil -> Nil
+
+-- $foldable
+-- prop> null (xs :: String) == null (Path.fromList xs)
+-- prop> length (xs :: String) == length (Path.fromList xs)
+
+instance Foldable Path where
+  foldMap f = \ case
+    Cons _ t xs -> foldMap f t <> foldMap f xs
+    Nil -> mempty
+  null = \ case
+    Nil -> True
+    _ -> False
+  length = \ case
+    Cons n_t _ xs -> n_t + length xs
+    Nil -> 0
+
+data Tree a
+  = Branch a (Tree a) (Tree a)
+  | Leaf a deriving Eq
+
+instance Functor Tree where
+  fmap f = \ case
+    Branch x t1 t2 -> Branch (f x) (fmap f t1) (fmap f t2)
+    Leaf x -> Leaf (f x)
+
+instance Foldable Tree where
+  foldMap f = \ case
+    Branch x t1 t2 -> f x <> foldMap f t1 <> foldMap f t2
+    Leaf x -> f x
+  null =
+    const False
+
+cons :: a -> Path a -> Path a
+cons x xs = case xs of
+  Cons n_t1 t1 (Cons n_t2 t2 ys)
+    | n_t1 == n_t2 -> Cons (n_t1 + n_t2 + 1) (Branch x t1 t2) ys
+  _ -> Cons 1 (Leaf x) xs
+
+nil :: Path a
+nil = Nil
+
+-- |
+-- prop> xs == toList (Path.fromList (xs :: String))
+fromList :: [a] -> Path a
+fromList = foldr Path.cons Path.nil
+
+-- |
+-- >>> Path.uncons (Path.fromList "a")
+-- Just ('a',Path.fromList "")
+-- >>> Path.uncons (Path.fromList "ab")
+-- Just ('a',Path.fromList "b")
+-- >>> Path.uncons (Path.fromList "abc")
+-- Just ('a',Path.fromList "bc")
+-- >>> Path.uncons Path.nil
+-- Nothing
+uncons :: Path a -> Maybe (a, Path a)
+uncons = \ case
+  Cons n_t (Branch x t1 t2) xs -> Just (x, consTrees (n_t `div` 2) t1 t2 xs)
+  Cons _ (Leaf x) xs -> Just (x xs)
+  Nil -> Nothing
+
+-- |
+-- prop> List.drop n (xs :: String) == toList (Path.drop n (Path.fromList xs))
+drop :: Int -> Path a -> Path a
+drop i xs = i `seq` case xs of
+  Cons n_t t ys
+    | i <= 0 -> xs
+    | otherwise -> case compare i n_t of
+      LT -> dropTree i n_t t ys
+      EQ -> ys
+      GT -> drop (i - n_t) ys
+  Nil -> xs
+
+-- |
+-- >>> dropTree 1 1 (Leaf 'a') Nil
+-- Path.fromList ""
+
+-- |
+-- >>> dropTree 1 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList "bc"
+
+-- |
+-- >>> dropTree 2 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList "c"
+
+-- |
+-- >>> dropTree 3 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList ""
+
+-- |
+-- >>> dropTree 4 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList ""
+
+-- |
+-- >>> :{
+-- dropTree 2 3
+--   (Branch 'b' (Leaf 'c') (Leaf 'd'))
+--   (Cons 3 (Branch 'e' (Leaf 'f') (Leaf 'g')) Nil)
+-- :}
+-- Path.fromList "defg"
+
+-- |
+-- >>> :{
+-- dropTree 3 7
+--   (Branch 'a'
+--    (Branch 'b' (Leaf 'c') (Leaf 'd'))
+--    (Branch 'e' (Leaf 'f') (Leaf 'g'))) Nil
+-- :}
+-- Path.fromList "defg"
+dropTree :: Int -> Int -> Tree a -> Path a -> Path a
+dropTree i n_t (Branch _ t1 t2) xs = case compare i (n_t' + 1) of
+  LT | i == 1 -> consTrees n_t' t1 t2 xs
+     | otherwise -> dropTree (i - 1) n_t' t1 (Cons n_t' t2 xs)
+  EQ -> Cons n_t' t2 xs
+  GT -> dropTree (i - n_t' - 1) n_t' t2 xs
+  where
+    n_t' = n_t `div` 2
+dropTree _ _ _ xs = xs
+
+consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
+consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
+
+lca :: Eq a => Path a -> Path a -> Path a
+lca xs ys = runIdentity $ mlca (\ x y -> Identity $ x == y) xs ys
+
+mlca :: (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
+mlca = undefined
