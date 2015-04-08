@@ -24,9 +24,15 @@ import Data.Ord
 import Prelude (Num (..), Int, div, seq, undefined)
 import Text.Show
 
+-- $setup
+-- >>> import qualified Data.List as List
+-- >>> import qualified Path
+-- >>> import Prelude (String)
+-- >>> import Test.QuickCheck
+
 data Path a
   = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
-  | Nil
+  | Nil deriving Eq
 
 instance Show a => Show (Path a) where
   showsPrec p xs =
@@ -36,6 +42,10 @@ instance Functor Path where
   fmap f = \ case
     Cons n_t t xs -> Cons n_t (fmap f t) (fmap f xs)
     Nil -> Nil
+
+-- $foldable
+-- prop> null (xs :: String) == null (Path.fromList xs)
+-- prop> length (xs :: String) == length (Path.fromList xs)
 
 instance Foldable Path where
   foldMap f = \ case
@@ -50,7 +60,7 @@ instance Foldable Path where
 
 data Tree a
   = Branch a (Tree a) (Tree a)
-  | Leaf a
+  | Leaf a deriving Eq
 
 instance Functor Tree where
   fmap f = \ case
@@ -64,28 +74,17 @@ instance Foldable Tree where
   null =
     const False
 
--- |
--- >>> null (Path.fromList "a")
--- False
--- >>> null (Path.fromList "ab")
--- False
--- >>> null (Path.fromList "abc")
--- False
 cons :: a -> Path a -> Path a
 cons x xs = case xs of
   Cons n_t1 t1 (Cons n_t2 t2 ys)
     | n_t1 == n_t2 -> Cons (n_t1 + n_t2 + 1) (Branch x t1 t2) ys
   _ -> Cons 1 (Leaf x) xs
 
--- |
--- >>> null (Path.fromList "")
--- True
 nil :: Path a
 nil = Nil
 
 -- |
--- >>> Path.fromList "abc"
--- Path.fromList "abc"
+-- prop> xs == toList (Path.fromList (xs :: String))
 fromList :: [a] -> Path a
 fromList = foldr Path.cons Path.nil
 
@@ -107,30 +106,7 @@ uncons = \ case
   Nil -> Nothing
 
 -- |
--- >>> Path.drop 0 (Path.fromList "a")
--- Path.fromList "a"
--- >>> Path.drop 1 (Path.fromList "a")
--- Path.fromList ""
--- >>> Path.drop 2 (Path.fromList "a")
--- Path.fromList ""
--- >>> Path.drop 0 (Path.fromList "ab")
--- Path.fromList "ab"
--- >>> Path.drop 1 (Path.fromList "ab")
--- Path.fromList "b"
--- >>> Path.drop 2 (Path.fromList "ab")
--- Path.fromList ""
--- >>> Path.drop 3 (Path.fromList "ab")
--- Path.fromList ""
--- >>> Path.drop 0 (Path.fromList "abc")
--- Path.fromList "abc"
--- >>> Path.drop 1 (Path.fromList "abc")
--- Path.fromList "bc"
--- >>> Path.drop 2 (Path.fromList "abc")
--- Path.fromList "c"
--- >>> Path.drop 3 (Path.fromList "abc")
--- Path.fromList ""
--- >>> Path.drop 4 (Path.fromList "abc")
--- Path.fromList ""
+-- prop> List.drop n (xs :: String) == toList (Path.drop n (Path.fromList xs))
 drop :: Int -> Path a -> Path a
 drop i xs = i `seq` case xs of
   Cons n_t t ys
@@ -141,14 +117,51 @@ drop i xs = i `seq` case xs of
       GT -> drop (i - n_t) ys
   Nil -> xs
 
+-- |
+-- >>> dropTree 1 1 (Leaf 'a') Nil
+-- Path.fromList ""
+
+-- |
+-- >>> dropTree 1 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList "bc"
+
+-- |
+-- >>> dropTree 2 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList "c"
+
+-- |
+-- >>> dropTree 3 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList ""
+
+-- |
+-- >>> dropTree 4 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
+-- Path.fromList ""
+
+-- |
+-- >>> :{
+-- dropTree 2 3
+--   (Branch 'b' (Leaf 'c') (Leaf 'd'))
+--   (Cons 3 (Branch 'e' (Leaf 'f') (Leaf 'g')) Nil)
+-- :}
+-- Path.fromList "defg"
+
+-- |
+-- >>> :{
+-- dropTree 3 7
+--   (Branch 'a'
+--    (Branch 'b' (Leaf 'c') (Leaf 'd'))
+--    (Branch 'e' (Leaf 'f') (Leaf 'g'))) Nil
+-- :}
+-- Path.fromList "defg"
 dropTree :: Int -> Int -> Tree a -> Path a -> Path a
 dropTree i n_t (Branch _ t1 t2) xs = case compare i (n_t' + 1) of
-  LT -> dropTree i n_t' t1 (Cons n_t' t2 xs)
+  LT | i == 1 -> Cons n_t' t1 (Cons n_t' t2 xs)
+     | otherwise -> dropTree (i - 1) n_t' t1 (Cons n_t' t2 xs)
   EQ -> Cons n_t' t2 xs
-  GT -> dropTree i n_t' t2 xs
+  GT -> dropTree (i - n_t' - 1) n_t' t2 xs
   where
     n_t' = n_t `div` 2
-dropTree _ n_t t xs = Cons n_t t xs
+dropTree _ _ _ xs = xs
 
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ mlca (\ x y -> Identity $ x == y) xs ys
