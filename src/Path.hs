@@ -107,12 +107,11 @@ uncons = \ case
 drop :: Int -> Path a -> Path a
 drop i xs = i `seq` case xs of
   Cons n_t t ys
-    | i <= 0 -> xs
-    | otherwise -> case compare i n_t of
+    | i >= 1 -> case compare i n_t of
       LT -> dropTree i n_t t ys
       EQ -> ys
       GT -> drop (i - n_t) ys
-  Nil -> xs
+  _ -> xs
 
 -- |
 -- >>> dropTree 1 1 (Leaf 'a') Nil
@@ -151,11 +150,12 @@ drop i xs = i `seq` case xs of
 -- :}
 -- Path.fromList "defg"
 dropTree :: Int -> Int -> Tree a -> Path a -> Path a
-dropTree i n_t (Branch _ t1 t2) xs = case compare i (n_t' + 1) of
-  LT | i == 1 -> consTrees n_t' t1 t2 xs
-     | otherwise -> dropTree (i - 1) n_t' t1 (Cons n_t' t2 xs)
-  EQ -> Cons n_t' t2 xs
-  GT -> dropTree (i - n_t' - 1) n_t' t2 xs
+dropTree i n_t (Branch _ t1 t2) xs
+  | i == 1 = consTrees n_t' t1 t2 xs
+  | otherwise = case compare i (n_t' + 1) of
+    LT -> dropTree (i - 1) n_t' t1 (Cons n_t' t2 xs)
+    EQ -> Cons n_t' t2 xs
+    GT -> dropTree (i - n_t' - 1) n_t' t2 xs
   where
     n_t' = n_t `div` 2
 dropTree _ _ _ xs = xs
