@@ -25,8 +25,8 @@ import Text.Show
 
 -- $setup
 -- >>> import qualified Data.List as List
+-- >>> import Data.String
 -- >>> import qualified Path
--- >>> import Prelude (String)
 -- >>> import Test.QuickCheck
 
 data Path a
@@ -98,10 +98,8 @@ fromList = foldr Path.cons Path.nil
 -- Nothing
 uncons :: Path a -> Maybe (a, Path a)
 uncons = \ case
-  Cons n_t t xs -> case t of
-    Leaf x -> Just (x, xs)
-    Branch x t1 t2 -> case n_t `div` 2 of
-      n_t' -> Just (x, Cons n_t' t1 (Cons n_t' t2 xs))
+  Cons n_t (Branch x t1 t2) xs -> Just (x, consTrees (n_t `div` 2) t1 t2 xs)
+  Cons _ (Leaf x) xs -> Just (x xs)
   Nil -> Nothing
 
 -- |
@@ -154,13 +152,16 @@ drop i xs = i `seq` case xs of
 -- Path.fromList "defg"
 dropTree :: Int -> Int -> Tree a -> Path a -> Path a
 dropTree i n_t (Branch _ t1 t2) xs = case compare i (n_t' + 1) of
-  LT | i == 1 -> Cons n_t' t1 (Cons n_t' t2 xs)
+  LT | i == 1 -> consTrees n_t' t1 t2 xs
      | otherwise -> dropTree (i - 1) n_t' t1 (Cons n_t' t2 xs)
   EQ -> Cons n_t' t2 xs
   GT -> dropTree (i - n_t' - 1) n_t' t2 xs
   where
     n_t' = n_t `div` 2
 dropTree _ _ _ xs = xs
+
+consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
+consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
 
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ mlca (\ x y -> Identity $ x == y) xs ys
