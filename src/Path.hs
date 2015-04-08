@@ -99,7 +99,7 @@ fromList = foldr Path.cons Path.nil
 uncons :: Path a -> Maybe (a, Path a)
 uncons = \ case
   Cons n_t (Branch x t1 t2) xs -> Just (x, consTrees (n_t `div` 2) t1 t2 xs)
-  Cons _ (Leaf x) xs -> Just (x xs)
+  Cons _ (Leaf x) xs -> Just (x, xs)
   Nil -> Nothing
 
 -- |
