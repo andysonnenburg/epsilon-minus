@@ -28,6 +28,7 @@ import Text.Show
 -- >>> import Data.String
 -- >>> import qualified Path
 -- >>> import Test.QuickCheck
+-- >>> let uncons (x:xs) = Just (x, xs); uncons [] = Nothing
 
 data Path a
   = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
@@ -73,29 +74,28 @@ instance Foldable Tree where
   null =
     const False
 
+-- |
+-- prop> (x:xs :: String) == toList (Path.cons x (Path.fromList xs))
+-- prop> Path.fromList (x:xs :: String) == Path.cons x (Path.fromList xs)
 cons :: a -> Path a -> Path a
 cons x xs = case xs of
   Cons n_t1 t1 (Cons n_t2 t2 ys)
     | n_t1 == n_t2 -> Cons (n_t1 + n_t2 + 1) (Branch x t1 t2) ys
   _ -> Cons 1 (Leaf x) xs
 
+-- |
+-- prop> [] == toList Path.nil
+-- prop> Path.fromList [] == Path.nil
 nil :: Path a
 nil = Nil
 
 -- |
--- prop> xs == toList (Path.fromList (xs :: String))
+-- prop> (xs :: String) == toList (Path.fromList xs)
 fromList :: [a] -> Path a
 fromList = foldr Path.cons Path.nil
 
 -- |
--- >>> Path.uncons (Path.fromList "a")
--- Just ('a',Path.fromList "")
--- >>> Path.uncons (Path.fromList "ab")
--- Just ('a',Path.fromList "b")
--- >>> Path.uncons (Path.fromList "abc")
--- Just ('a',Path.fromList "bc")
--- >>> Path.uncons Path.nil
--- Nothing
+-- prop> uncons (xs :: String) == (fmap.fmap) toList (Path.uncons (Path.fromList xs))
 uncons :: Path a -> Maybe (a, Path a)
 uncons = \ case
   Cons n_t (Branch x t1 t2) xs -> Just (x, consTrees (n_t `div` 2) t1 t2 xs)
@@ -113,42 +113,6 @@ drop i xs = i `seq` case xs of
       GT -> drop (i - n_t) ys
   _ -> xs
 
--- |
--- >>> dropTree 1 1 (Leaf 'a') Nil
--- Path.fromList ""
-
--- |
--- >>> dropTree 1 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
--- Path.fromList "bc"
-
--- |
--- >>> dropTree 2 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
--- Path.fromList "c"
-
--- |
--- >>> dropTree 3 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
--- Path.fromList ""
-
--- |
--- >>> dropTree 4 3 (Branch 'a' (Leaf 'b') (Leaf 'c')) Nil
--- Path.fromList ""
-
--- |
--- >>> :{
--- dropTree 2 3
---   (Branch 'b' (Leaf 'c') (Leaf 'd'))
---   (Cons 3 (Branch 'e' (Leaf 'f') (Leaf 'g')) Nil)
--- :}
--- Path.fromList "defg"
-
--- |
--- >>> :{
--- dropTree 3 7
---   (Branch 'a'
---    (Branch 'b' (Leaf 'c') (Leaf 'd'))
---    (Branch 'e' (Leaf 'f') (Leaf 'g'))) Nil
--- :}
--- Path.fromList "defg"
 dropTree :: Int -> Int -> Tree a -> Path a -> Path a
 dropTree i n_t (Branch _ t1 t2) xs
   | i == 1 = consTrees n_t' t1 t2 xs
