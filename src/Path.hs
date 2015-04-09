@@ -131,4 +131,7 @@ lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ mlca (\ x y -> Identity $ x == y) xs ys
 
 mlca :: (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-mlca = undefined
+mlca f xs0 ys0 = undefined
+  where
+    n_xs0 = length xs0
+    n_ys0 = length ys0
