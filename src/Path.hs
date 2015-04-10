@@ -20,7 +20,7 @@ import Data.Functor.Identity
 import Data.Maybe (Maybe (..))
 import Data.Monoid
 import Data.Ord
-import Prelude (Num (..), Int, div, seq, undefined)
+import Prelude (Num (..), Int, div, seq)
 import Text.Show
 
 -- $setup
@@ -141,21 +141,57 @@ dropTree i n_t (Branch _ t1 t2) xs
     n_t' = n_t `div` 2
 dropTree _ _ _ xs = xs
 
-consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
-consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
-
 -- |
 -- prop> lca (xs :: String) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
 
 lcaM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-lcaM f xs0 ys0 =
-  dropWhileM2 f (drop (n_ys0 - n_xs0) xs0) (drop (n_xs0 - n_ys0) ys0)
+lcaM f xs ys =
+  dropWhileM2 f' (drop (n_xs - n_ys) xs) (drop (n_ys - n_xs) ys)
   where
-    n_xs0 = length xs0
-    n_ys0 = length ys0
+    f' x y = not <$> f x y
+    n_xs = length xs
+    n_ys = length ys
 
 dropWhileM2 :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-dropWhileM2 f (Cons _ t_x xs) (Cons _ t_y ys) = undefined
-dropWhileM2 _ _ _ = pure Nil
+dropWhileM2 f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
+  ifM
+  (rootWith2 f t_x t_y)
+  (ifM
+   (headWithA2 f xs' ys')
+   (dropWhileM2 f xs' ys')
+   (dropTreeWhileM2 f n_t t_x t_y xs'))
+  (pure xs)
+dropWhileM2 _ _ _ =
+  pure Nil
+
+dropTreeWhileM2 :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
+dropTreeWhileM2 f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
+  ifM
+  (rootWith2 f t_x_1 t_y_1)
+  (pure $ consTrees n_t' t_x_1 t_x_2 xs)
+  (ifM
+   (rootWith2 f t_x_2 t_y_2)
+   (dropTreeWhileM2 f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs))
+   (dropTreeWhileM2 f n_t' t_x_2 t_y_2 xs))
+  where
+    n_t' = n_t `div` 2
+dropTreeWhileM2 _ _ _ _ xs = pure xs
+
+consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
+consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
+
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM p x y = p >>= bool x y
+
+headWithA2 :: Applicative f => (a -> b -> f Bool) -> Path a -> Path b -> f Bool
+headWithA2 f (Cons _ xs _) (Cons _ ys _) = rootWith2 f xs ys
+headWithA2 _ _ _ = pure False
+
+rootWith2 :: (a -> b -> c) -> Tree a -> Tree b -> c
+rootWith2 f xs ys = f (root xs) (root ys)
+
+root :: Tree a -> a
+root (Branch x _ _) = x
+root (Leaf x) = x
