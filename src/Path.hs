@@ -3,19 +3,19 @@
 module Path
        ( Path
        , cons
-       , nil
        , fromList
        , uncons
        , drop
        , lca
-       , mlca
+       , lcaM
        ) where
 
+import Control.Applicative
+import Control.Monad
 import Data.Bool
 import Data.Eq
 import Data.Foldable
 import Data.Function
-import Data.Functor
 import Data.Functor.Identity
 import Data.Maybe (Maybe (..))
 import Data.Monoid
@@ -24,11 +24,25 @@ import Prelude (Num (..), Int, div, seq, undefined)
 import Text.Show
 
 -- $setup
+-- >>> import Data.Char
 -- >>> import qualified Data.List as List
 -- >>> import Data.String
+-- >>> import Data.Tuple
 -- >>> import qualified Path
 -- >>> import Test.QuickCheck
 -- >>> let uncons (x:xs) = Just (x, xs); uncons [] = Nothing
+-- >>> :{
+-- let lca xs ys =
+--       fmap snd $
+--       List.dropWhile (not . fst) $
+--       List.zipWith
+--       (\ x y -> (x == y, x))
+--       (List.drop (n_ys - n_xs) xs)
+--       (List.drop (n_xs - n_ys) ys)
+--       where
+--         n_xs = length xs
+--         n_ys = length ys
+-- :}
 
 data Path a
   = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
@@ -37,6 +51,15 @@ data Path a
 instance Show a => Show (Path a) where
   showsPrec p xs =
     showParen (p > 10) $ showString "Path.fromList " . shows (toList xs)
+
+-- $monoid
+-- prop> mempty == toList (mempty :: Path Char)
+-- prop> Path.fromList mempty == mempty
+-- prop> (xs :: String) <> ys == toList (Path.fromList xs <> Path.fromList ys)
+
+instance Monoid (Path a) where
+  mempty = Nil
+  mappend = flip (foldr cons)
 
 instance Functor Path where
   fmap f = \ case
@@ -84,15 +107,9 @@ cons x xs = case xs of
   _ -> Cons 1 (Leaf x) xs
 
 -- |
--- prop> [] == toList Path.nil
--- prop> Path.fromList [] == Path.nil
-nil :: Path a
-nil = Nil
-
--- |
 -- prop> (xs :: String) == toList (Path.fromList xs)
 fromList :: [a] -> Path a
-fromList = foldr Path.cons Path.nil
+fromList = foldr cons mempty
 
 -- |
 -- prop> uncons (xs :: String) == (fmap.fmap) toList (Path.uncons (Path.fromList xs))
@@ -127,11 +144,18 @@ dropTree _ _ _ xs = xs
 consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
 consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
 
+-- |
+-- prop> lca (xs :: String) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
-lca xs ys = runIdentity $ mlca (\ x y -> Identity $ x == y) xs ys
+lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
 
-mlca :: (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-mlca f xs0 ys0 = undefined
+lcaM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
+lcaM f xs0 ys0 =
+  dropWhileM2 f (drop (n_ys0 - n_xs0) xs0) (drop (n_xs0 - n_ys0) ys0)
   where
     n_xs0 = length xs0
     n_ys0 = length ys0
+
+dropWhileM2 :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
+dropWhileM2 f (Cons _ t_x xs) (Cons _ t_y ys) = undefined
+dropWhileM2 _ _ _ = pure Nil
