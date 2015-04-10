@@ -33,12 +33,11 @@ import Text.Show
 -- >>> let uncons (x:xs) = Just (x, xs); uncons [] = Nothing
 -- >>> :{
 -- let lca xs ys =
---       fmap snd $
---       List.dropWhile (not . fst) $
---       List.zipWith
---       (\ x y -> (x == y, x))
---       (List.drop (n_ys - n_xs) xs)
---       (List.drop (n_xs - n_ys) ys)
+--       fmap fst $
+--       List.dropWhile (uncurry (/=)) $
+--       List.zip
+--       (List.drop (n_xs - n_ys) xs)
+--       (List.drop (n_ys - n_xs) ys)
 --       where
 --         n_xs = length xs
 --         n_ys = length ys
@@ -157,9 +156,9 @@ lcaM f xs ys =
 dropWhileM2 :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
 dropWhileM2 f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
   ifM
-  (rootWith2 f t_x t_y)
+  (zipRootWith f t_x t_y)
   (ifM
-   (headWithA2 f xs' ys')
+   (zipHeadWithA f xs' ys')
    (dropWhileM2 f xs' ys')
    (dropTreeWhileM2 f n_t t_x t_y xs'))
   (pure xs)
@@ -169,12 +168,12 @@ dropWhileM2 _ _ _ =
 dropTreeWhileM2 :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
 dropTreeWhileM2 f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
   ifM
-  (rootWith2 f t_x_1 t_y_1)
-  (pure $ consTrees n_t' t_x_1 t_x_2 xs)
+  (zipRootWith f t_x_1 t_y_1)
   (ifM
-   (rootWith2 f t_x_2 t_y_2)
-   (dropTreeWhileM2 f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs))
-   (dropTreeWhileM2 f n_t' t_x_2 t_y_2 xs))
+   (zipRootWith f t_x_2 t_y_2)
+   (dropTreeWhileM2 f n_t' t_x_2 t_y_2 xs)
+   (dropTreeWhileM2 f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
+  (pure $ consTrees n_t' t_x_1 t_x_2 xs)
   where
     n_t' = n_t `div` 2
 dropTreeWhileM2 _ _ _ _ xs = pure xs
@@ -183,14 +182,14 @@ consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
 consTrees n_t t1 t2 xs = Cons n_t t1 (Cons n_t t2 xs)
 
 ifM :: Monad m => m Bool -> m a -> m a -> m a
-ifM p x y = p >>= bool x y
+ifM p x y = p >>= bool y x
 
-headWithA2 :: Applicative f => (a -> b -> f Bool) -> Path a -> Path b -> f Bool
-headWithA2 f (Cons _ xs _) (Cons _ ys _) = rootWith2 f xs ys
-headWithA2 _ _ _ = pure False
+zipHeadWithA :: Applicative f => (a -> b -> f Bool) -> Path a -> Path b -> f Bool
+zipHeadWithA f (Cons _ xs _) (Cons _ ys _) = zipRootWith f xs ys
+zipHeadWithA _ _ _ = pure False
 
-rootWith2 :: (a -> b -> c) -> Tree a -> Tree b -> c
-rootWith2 f xs ys = f (root xs) (root ys)
+zipRootWith :: (a -> b -> c) -> Tree a -> Tree b -> c
+zipRootWith f xs ys = f (root xs) (root ys)
 
 root :: Tree a -> a
 root (Branch x _ _) = x
