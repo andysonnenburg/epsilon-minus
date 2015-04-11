@@ -180,21 +180,21 @@ drop :: Int -> Path a -> Path a
 drop i xs = i `seq` case xs of
   Cons n_t t ys
     | i >= 1 -> case compare i n_t of
-      LT -> dropTree i n_t t ys
+      LT -> unsafeDropTree i n_t t ys
       EQ -> ys
       GT -> drop (i - n_t) ys
   _ -> xs
 
-dropTree :: Int -> Int -> Tree a -> Path a -> Path a
-dropTree i n_t (Branch _ t_1 t_2) xs
+unsafeDropTree :: Int -> Int -> Tree a -> Path a -> Path a
+unsafeDropTree i n_t (Branch _ t_1 t_2) xs
   | i == 1 = consTrees n_t' t_1 t_2 xs
   | otherwise = case compare i (n_t' + 1) of
-    LT -> dropTree (i - 1) n_t' t_1 (Cons n_t' t_2 xs)
+    LT -> unsafeDropTree (i - 1) n_t' t_1 (Cons n_t' t_2 xs)
     EQ -> Cons n_t' t_2 xs
-    GT -> dropTree (i - n_t' - 1) n_t' t_2 xs
+    GT -> unsafeDropTree (i - n_t' - 1) n_t' t_2 xs
   where
     n_t' = n_t `div` 2
-dropTree _ _ _ xs = xs
+unsafeDropTree _ _ _ xs = xs
 
 -- |
 -- prop> \ (Paths xs ys) -> lca (xs :: [Int]) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
@@ -203,36 +203,36 @@ lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
 
 lcaM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
 lcaM f xs ys =
-  dropWhileM2 f' (drop (n_xs - n_ys) xs) (drop (n_ys - n_xs) ys)
+  unsafeDropWhileM f' (drop (n_xs - n_ys) xs) (drop (n_ys - n_xs) ys)
   where
     f' x y = not <$> f x y
     n_xs = length xs
     n_ys = length ys
 
-dropWhileM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-dropWhileM f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
+unsafeDropWhileM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
+unsafeDropWhileM f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
   ifM
   (foldRoot2 f t_x t_y)
   (ifM
    (foldHeadA2 f xs' ys')
-   (dropWhileM f xs' ys')
-   (dropTreeWhileM f n_t t_x t_y xs'))
+   (unsafeDropWhileM f xs' ys')
+   (unsafeDropTreeWhileM f n_t t_x t_y xs'))
   (pure xs)
-dropWhileM _ _ _ =
+unsafeDropWhileM _ _ _ =
   pure Nil
 
-dropTreeWhileM :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
-dropTreeWhileM f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
+unsafeDropTreeWhileM :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
+unsafeDropTreeWhileM f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
   ifM
   (foldRoot2 f t_x_1 t_y_1)
   (ifM
    (foldRoot2 f t_x_2 t_y_2)
-   (dropTreeWhileM f n_t' t_x_2 t_y_2 xs)
-   (dropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
+   (unsafeDropTreeWhileM f n_t' t_x_2 t_y_2 xs)
+   (unsafeDropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
   (pure $ consTrees n_t' t_x_1 t_x_2 xs)
   where
     n_t' = n_t `div` 2
-dropTreeWhileM2 _ _ _ _ xs = pure xs
+unsafeDropTreeWhileM _ _ _ _ xs = pure xs
 
 consTrees :: Int -> Tree a -> Tree a -> Path a -> Path a
 consTrees n_t t_1 t_2 xs = Cons n_t t_1 (Cons n_t t_2 xs)
