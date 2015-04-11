@@ -28,13 +28,23 @@ import Prelude (Num (..), Int, div, seq, subtract)
 import Text.Show
 
 -- $setup
+-- >>> :set -XLambdaCase
+-- >>> :set -XMultiWayIf
+-- >>> import Control.Monad.State
 -- >>> import Data.Char
 -- >>> import qualified Data.List as List
 -- >>> import Data.String
 -- >>> import Data.Tuple
 -- >>> import qualified Path
+-- >>> import Prelude (Enum, pred)
 -- >>> import Test.QuickCheck
--- >>> let uncons (x:xs) = Just (x, xs); uncons [] = Nothing
+--
+-- >>> :{
+-- let uncons = \ case
+--       x:xs -> Just (x, xs)
+--       [] -> Nothing
+-- :}
+--
 -- >>> :{
 -- let lca xs ys =
 --       fmap fst $
@@ -45,6 +55,36 @@ import Text.Show
 --       where
 --         n_xs = length xs
 --         n_ys = length ys
+-- :}
+--
+-- >>> :{
+-- data Rose = Rose {-# UNPACK #-} !Int [Rose]
+-- instance Arbitrary Rose where
+--   arbitrary = sized $ \ n -> flip evalStateT n $ fix (\ rec' -> do
+--     x <- get
+--     Rose x <$>
+--       if x <= 0
+--       then pure []
+--       else do
+--         put $ pred x
+--         lift (choose (0, x)) >>= flip replicateM rec')
+-- :}
+--
+-- >>> :{
+-- let arbitraryPath = fix (\ rec' xs (Rose x ts) -> sized $ \ n ->
+--       if | n <= 0 -> pure xs
+--          | null ts -> pure (x:xs)
+--          | otherwise -> do
+--            t <- elements ts
+--            scale (subtract 1) (rec' (x:xs) t)) []
+-- :}
+--
+-- >>> :{
+-- data Paths = Paths [Int] [Int] deriving Show
+-- instance Arbitrary Paths where
+--   arbitrary = do
+--     t <- arbitrary
+--     Paths <$> arbitraryPath t <*> arbitraryPath t
 -- :}
 
 data Path a
@@ -148,7 +188,7 @@ dropTree i n_t (Branch _ t_1 t_2) xs
 dropTree _ _ _ xs = xs
 
 -- |
--- prop> \ (Ordered xs) (Ordered ys) -> lca (xs :: String) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
+-- prop> \ (Paths xs ys) -> lca (xs :: [Int]) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
 
