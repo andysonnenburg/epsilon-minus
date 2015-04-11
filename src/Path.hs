@@ -16,6 +16,7 @@ import Control.Applicative
 import Control.Monad
 import Data.Bool
 import Data.Bits
+import Data.Coerce
 import Data.Eq
 import Data.Foldable
 import Data.Function
@@ -63,8 +64,8 @@ import Text.Show
 -- :}
 --
 -- >>> :{
--- data T = B {-# UNPACK #-} !Int T T | E deriving Show
--- instance Arbitrary T where
+-- data IntTree = B {-# UNPACK #-} !Int IntTree IntTree | E deriving Show
+-- instance Arbitrary IntTree where
 --   arbitrary = sized $ flip evalStateT 0 . fix (\ rec' n ->
 --     if n <= 0
 --       then pure E
@@ -218,7 +219,7 @@ unsafeDropTree _ _ _ xs = xs
 -- |
 -- prop> \ (Paths (Two xs ys)) -> lca (xs :: [Int]) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
-lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
+lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
 lcaM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
 lcaM f xs ys =
@@ -248,7 +249,7 @@ unsafeDropTreeWhileM f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
    (foldRoot2 f t_x_2 t_y_2)
    (unsafeDropTreeWhileM f n_t' t_x_2 t_y_2 xs)
    (unsafeDropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
-  (pure $ consTrees n_t' t_x_1 t_x_2 xs)
+  (pure (consTrees n_t' t_x_1 t_x_2 xs))
   where
     n_t' = n_t `div` 2
 unsafeDropTreeWhileM _ _ _ _ xs = pure xs
