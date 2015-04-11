@@ -29,6 +29,12 @@ import Text.Show
 
 -- $setup
 -- >>> :set -XLambdaCase
+-- >>> :set -XDeriveFunctor
+-- >>> :set -XDeriveFoldable
+-- >>> :set -XFlexibleContexts
+-- >>> :set -XDeriveTraversable
+-- >>> :set -XStandaloneDeriving
+-- >>> :set -XUndecidableInstances
 -- >>> import Control.Monad.State
 -- >>> import Data.Char
 -- >>> import qualified Data.List as List
@@ -89,11 +95,24 @@ import Text.Show
 -- :}
 --
 -- >>> :{
--- data Paths = Paths [Int] [Int] deriving Show
--- instance Arbitrary Paths where
+-- newtype Paths f = Paths (f [Int])
+-- deriving instance Show (f [Int]) => Show (Paths f)
+-- instance (Traversable f, Arbitrary (f ())) => Arbitrary (Paths f) where
 --   arbitrary = do
 --     t <- arbitrary
---     Paths <$> arbitraryPath t <*> arbitraryPath t
+--     xs <- mapUnit <$> arbitrary
+--     Paths <$> traverse (const (arbitraryPath t)) xs
+--     where
+--       mapUnit = fmap (\ () -> ())
+-- :}
+--
+-- >>> :{
+-- data Two a = Two a a deriving (Show, Functor, Foldable, Traversable)
+-- instance Arbitrary a => Arbitrary (Two a) where
+--   arbitrary =
+--     Two <$>
+--     scale (`div` 2) arbitrary <*>
+--     scale (`div` 2) arbitrary
 -- :}
 
 data Path a
@@ -197,7 +216,7 @@ unsafeDropTree i n_t (Branch _ t_1 t_2) xs
 unsafeDropTree _ _ _ xs = xs
 
 -- |
--- prop> \ (Paths xs ys) -> lca (xs :: [Int]) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
+-- prop> \ (Paths (Two xs ys)) -> lca (xs :: [Int]) ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = runIdentity $ lcaM (\ x y -> Identity $ x == y) xs ys
 
