@@ -209,26 +209,26 @@ lcaM f xs ys =
     n_xs = length xs
     n_ys = length ys
 
-dropWhileM2 :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
-dropWhileM2 f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
+dropWhileM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
+dropWhileM f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
   ifM
   (foldRoot2 f t_x t_y)
   (ifM
    (foldHeadA2 f xs' ys')
-   (dropWhileM2 f xs' ys')
-   (dropTreeWhileM2 f n_t t_x t_y xs'))
+   (dropWhileM f xs' ys')
+   (dropTreeWhileM f n_t t_x t_y xs'))
   (pure xs)
-dropWhileM2 _ _ _ =
+dropWhileM _ _ _ =
   pure Nil
 
-dropTreeWhileM2 :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
-dropTreeWhileM2 f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
+dropTreeWhileM :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
+dropTreeWhileM f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
   ifM
   (foldRoot2 f t_x_1 t_y_1)
   (ifM
    (foldRoot2 f t_x_2 t_y_2)
-   (dropTreeWhileM2 f n_t' t_x_2 t_y_2 xs)
-   (dropTreeWhileM2 f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
+   (dropTreeWhileM f n_t' t_x_2 t_y_2 xs)
+   (dropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
   (pure $ consTrees n_t' t_x_1 t_x_2 xs)
   where
     n_t' = n_t `div` 2
