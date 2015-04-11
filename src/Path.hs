@@ -29,7 +29,6 @@ import Text.Show
 
 -- $setup
 -- >>> :set -XLambdaCase
--- >>> :set -XMultiWayIf
 -- >>> import Control.Monad.State
 -- >>> import Data.Char
 -- >>> import qualified Data.List as List
@@ -58,25 +57,35 @@ import Text.Show
 -- :}
 --
 -- >>> :{
--- data Rose = Rose {-# UNPACK #-} !Int [Rose]
--- instance Arbitrary Rose where
---   arbitrary = sized $ \ n -> flip evalStateT n $ fix (\ rec' -> do
---     x <- get
---     Rose x <$>
---       if x <= 0
---       then pure []
---       else do
---         put $ pred x
---         lift (choose (0, x)) >>= flip replicateM rec')
+-- data T = B {-# UNPACK #-} !Int T T | E deriving Show
+-- instance Arbitrary T where
+--   arbitrary = sized $ flip evalStateT 0 . fix (\ rec' n ->
+--     if n <= 0
+--       then pure E
+--       else lift (frequency [(1, pure True), (3, pure False)]) >>= \ p ->
+--         if p
+--           then pure E
+--           else do
+--             x <- postIncrement
+--             B x <$> rec' (n `div` 2) <*> rec' (n `div` 2))
+--     where
+--       postIncrement = do
+--         x <- get
+--         modify (+ 1)
+--         pure x
 -- :}
 --
 -- >>> :{
--- let arbitraryPath = fix (\ rec' xs (Rose x ts) -> sized $ \ n ->
---       if | n <= 0 -> pure xs
---          | null ts -> pure (x:xs)
---          | otherwise -> do
---            t <- elements ts
---            scale (subtract 1) (rec' (x:xs) t)) []
+-- let arbitraryPath = fix (\ rec' xs t -> sized $ \ n ->
+--       if n <= 0
+--         then pure xs
+--         else case t of
+--            E -> pure xs
+--            B x t_1 t_2 -> arbitrary >>= \ p ->
+--              scale (subtract 1) $ rec' (x:xs) $
+--              if p
+--              then t_1
+--              else t_2) []
 -- :}
 --
 -- >>> :{
