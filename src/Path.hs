@@ -248,5 +248,6 @@ foldRoot2 :: (a -> b -> c) -> Tree a -> Tree b -> c
 foldRoot2 f xs ys = f (root xs) (root ys)
 
 root :: Tree a -> a
-root (Branch x _ _) = x
-root (Leaf x) = x
+root = \ case
+  Branch x _ _ -> x
+  Leaf x -> x
