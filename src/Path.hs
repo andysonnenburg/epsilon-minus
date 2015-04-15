@@ -32,6 +32,7 @@ import Text.Show
 -- >>> :set -XLambdaCase
 -- >>> :set -XDeriveFunctor
 -- >>> :set -XDeriveFoldable
+-- >>> :set -XPatternSynonyms
 -- >>> :set -XFlexibleContexts
 -- >>> :set -XDeriveTraversable
 -- >>> :set -XStandaloneDeriving
@@ -117,6 +118,8 @@ import Text.Show
 --     scale (`div` 2) arbitrary
 -- :}
 --
+-- >>> pattern TwoIntPaths xs ys = IntPaths (Two xs ys)
+--
 -- >>> :{
 -- data Three a = Three a a a deriving (Show, Functor, Foldable, Traversable)
 -- instance Arbitrary a => Arbitrary (Three a) where
@@ -126,6 +129,8 @@ import Text.Show
 --     scale (`div` 3) arbitrary <*>
 --     scale (`div` 3) arbitrary
 -- :}
+--
+-- >>> pattern ThreeIntPaths xs ys zs = IntPaths (Three xs ys zs)
 
 data Path a
   = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
@@ -228,9 +233,9 @@ unsafeDropTree i n_t (Branch _ t_1 t_2) xs
 unsafeDropTree _ _ _ xs = xs
 
 -- |
--- prop> \ (IntPaths (Two xs ys)) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
--- prop> \ (IntPaths (Three xs ys zs)) -> lca (lca xs ys) zs == toList (Path.lca (Path.lca (Path.fromList xs) (Path.fromList ys)) (Path.fromList zs))
--- prop> \ (IntPaths (Three xs ys zs)) -> lca xs (lca zs ys) == toList (Path.lca (Path.fromList xs) (Path.lca (Path.fromList ys) (Path.fromList zs)))
+-- prop> \ (TwoIntPaths xs ys) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
+-- prop> \ (ThreeIntPaths xs ys zs) -> lca (lca xs ys) zs == toList (Path.lca (Path.lca (Path.fromList xs) (Path.fromList ys)) (Path.fromList zs))
+-- prop> \ (ThreeIntPaths xs ys zs) -> lca xs (lca zs ys) == toList (Path.lca (Path.fromList xs) (Path.lca (Path.fromList ys) (Path.fromList zs)))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
