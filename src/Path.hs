@@ -74,7 +74,8 @@ import Text.Show
 --           then pure E
 --           else do
 --             x <- postIncrement
---             B x <$> rec' (n `div` 2) <*> rec' (n `div` 2))
+--             let n' = (n - 1) `div` 2
+--             B x <$> rec' n' <*> rec' n')
 --     where
 --       postIncrement = do
 --         x <- get
@@ -114,6 +115,16 @@ import Text.Show
 --     Two <$>
 --     scale (`div` 2) arbitrary <*>
 --     scale (`div` 2) arbitrary
+-- :}
+--
+-- >>> :{
+-- data Three a = Three a a a deriving (Show, Functor, Foldable, Traversable)
+-- instance Arbitrary a => Arbitrary (Three a) where
+--   arbitrary =
+--     Three <$>
+--     scale (`div` 3) arbitrary <*>
+--     scale (`div` 3) arbitrary <*>
+--     scale (`div` 3) arbitrary
 -- :}
 
 data Path a
@@ -218,6 +229,7 @@ unsafeDropTree _ _ _ xs = xs
 
 -- |
 -- prop> \ (IntPaths (Two xs ys)) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
+-- prop> \ (IntPaths (Three xs ys zs)) -> lca (lca xs ys) zs == toList (Path.lca (Path.lca (Path.fromList xs) (Path.fromList ys)) (Path.fromList zs))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
@@ -231,25 +243,21 @@ lcaM f xs ys =
 
 unsafeDropWhileM :: Monad m => (a -> b -> m Bool) -> Path a -> Path b -> m (Path a)
 unsafeDropWhileM f xs@(Cons n_t t_x xs') (Cons _ t_y ys') =
-  ifM
-  (foldRoot2 f t_x t_y)
-  (ifM
-   (foldHeadA2 f xs' ys')
-   (unsafeDropWhileM f xs' ys')
-   (unsafeDropTreeWhileM f n_t t_x t_y xs'))
-  (pure xs)
+  ifM (foldRoot2 f t_x t_y)
+    (ifM (foldHeadA2 f xs' ys')
+       (unsafeDropWhileM f xs' ys')
+       (unsafeDropTreeWhileM f n_t t_x t_y xs'))
+    (pure xs)
 unsafeDropWhileM _ _ _ =
   pure Nil
 
 unsafeDropTreeWhileM :: Monad m => (a -> b -> m Bool) -> Int -> Tree a -> Tree b -> Path a -> m (Path a)
 unsafeDropTreeWhileM f n_t (Branch _ t_x_1 t_x_2) (Branch _ t_y_1 t_y_2) xs =
-  ifM
-  (foldRoot2 f t_x_1 t_y_1)
-  (ifM
-   (foldRoot2 f t_x_2 t_y_2)
-   (unsafeDropTreeWhileM f n_t' t_x_2 t_y_2 xs)
-   (unsafeDropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
-  (pure (consTrees n_t' t_x_1 t_x_2 xs))
+  ifM (foldRoot2 f t_x_1 t_y_1)
+    (ifM (foldRoot2 f t_x_2 t_y_2)
+       (unsafeDropTreeWhileM f n_t' t_x_2 t_y_2 xs)
+       (unsafeDropTreeWhileM f n_t' t_x_1 t_y_1 (Cons n_t' t_x_2 xs)))
+    (pure (consTrees n_t' t_x_1 t_x_2 xs))
   where
     n_t' = n_t `div` 2
 unsafeDropTreeWhileM _ _ _ _ xs = pure xs
