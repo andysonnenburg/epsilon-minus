@@ -83,7 +83,7 @@ import Text.Show
 -- :}
 --
 -- >>> :{
--- let arbitraryPath = fix (\ rec' xs t -> sized $ \ n ->
+-- let arbitraryIntPath = fix (\ rec' xs t -> sized $ \ n ->
 --       if n <= 0
 --         then pure xs
 --         else case t of
@@ -96,13 +96,13 @@ import Text.Show
 -- :}
 --
 -- >>> :{
--- newtype Paths f = Paths (f [Int])
--- deriving instance Show (f [Int]) => Show (Paths f)
--- instance (Traversable f, Arbitrary (f ())) => Arbitrary (Paths f) where
+-- newtype IntPaths f = IntPaths (f [Int])
+-- deriving instance Show (f [Int]) => Show (IntPaths f)
+-- instance (Traversable f, Arbitrary (f ())) => Arbitrary (IntPaths f) where
 --   arbitrary = do
 --     t <- arbitrary
 --     xs <- mapUnit <$> arbitrary
---     Paths <$> traverse (const (arbitraryPath t)) xs
+--     IntPaths <$> traverse (const (arbitraryIntPath t)) xs
 --     where
 --       mapUnit = fmap (\ () -> ())
 -- :}
@@ -217,7 +217,7 @@ unsafeDropTree i n_t (Branch _ t_1 t_2) xs
 unsafeDropTree _ _ _ xs = xs
 
 -- |
--- prop> \ (Paths (Two xs ys)) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
+-- prop> \ (IntPaths (Two xs ys)) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
