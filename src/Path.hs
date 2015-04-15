@@ -230,6 +230,7 @@ unsafeDropTree _ _ _ xs = xs
 -- |
 -- prop> \ (IntPaths (Two xs ys)) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
 -- prop> \ (IntPaths (Three xs ys zs)) -> lca (lca xs ys) zs == toList (Path.lca (Path.lca (Path.fromList xs) (Path.fromList ys)) (Path.fromList zs))
+-- prop> \ (IntPaths (Three xs ys zs)) -> lca xs (lca zs ys) == toList (Path.lca (Path.fromList xs) (Path.lca (Path.fromList ys) (Path.fromList zs)))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
