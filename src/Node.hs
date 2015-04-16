@@ -1,16 +1,24 @@
 {-# LANGUAGE LambdaCase #-}
 module Node
        ( Node
-       , BindingFlag (..)
        , new
+       , unify
        , Matchable (..)
+       , BindingFlag (..)
        ) where
 
 import Contents
+import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Control.Monad.ST
+import Data.Bool
+import Data.Foldable
+import Data.Function
 import Lens
 import Path (Path)
 import qualified Path
+import UnionFind ((===), (/==))
 import qualified UnionFind
 
 data Node s f =
@@ -37,37 +45,92 @@ morphismRef =
   (\ (Node _ _ z) -> z)
   (\ (Node x y _) z -> Node x y z)
 
-type RebindRef s f = UnionFind.Ref s (Binder s f)
+new :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
+new n bf ns =
+  Node <$>
+  newRebindRef n <*>
+  newUnifyRef n bf ns <*>
+  newMorphismRef n bf ns
 
-type UnifyRef s f = UnionFind.Ref s (NodeState s f)
+type Unify s = MaybeT (ST s)
 
-type NodeState s f = (Binder s f, BindingFlag, f (Node s f), Color)
+unify :: Matchable f => Node s f -> Node s f -> Unify s ()
+unify n_x n_y =
+  rebind n_x n_y
 
-binder :: Functor t => Lens' t (NodeState s f) (Binder s f)
+rebind :: Matchable f => Node s f -> Node s f -> Unify s ()
+rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
+  lift $ do
+    b <- join $ lcaM' <$> n_x^!rebindRef.contents <*> n_y^!rebindRef.contents
+    UnionFind.union (n_x^.rebindRef) (n_y^.rebindRef)
+    UnionFind.write (n_x^.rebindRef) b
+  MaybeT
+    (zipMatch <$>
+     n_x^!unifyRef.contents.nodes <*>
+     n_y^!unifyRef.contents.nodes) >>=
+    traverse_ (uncurry rebind)
+  where
+    lcaM' = Path.lcaM ((===) `on` get rebindRef)
+
+class Traversable f => Matchable f where
+  zipMatch :: f a -> f b -> Maybe (f (a, b))
+  bottom :: f a -> Bool
+  polymorphic :: f a -> Bool
+  polymorphic = bottom
+
+type RebindRef s f = UnionFind.Ref s (RebindState s f)
+
+newRebindRef :: Node s f -> ST s (RebindRef s f)
+newRebindRef n = Path.cons n <$> n^!rebindRef.contents >>= UnionFind.new
+
+type RebindState s f = Binder s f
+
+type UnifyRef s f = UnionFind.Ref s (UnifyState s f)
+
+newUnifyRef :: Node s f -> BindingFlag -> f (Node s f) -> ST s (UnifyRef s f)
+newUnifyRef n bf ns = UnionFind.new =<< getUnifyState n bf ns
+
+type UnifyState s f = (Binder s f, BindingFlag, f (Node s f), Color)
+
+binder :: Functor t => Lens' t (UnifyState s f) (Binder s f)
 binder =
   lens
   (\ (a, _, _, _) -> a)
   (\ (_, b, c, d) a -> (a, b, c, d))
 
-bindingFlag :: Functor t => Lens' t (NodeState s f) BindingFlag
+bindingFlag :: Functor t => Lens' t (UnifyState s f) BindingFlag
 bindingFlag =
   lens
   (\ (_, b, _, _) -> b)
   (\ (a, _, c, d) b -> (a, b, c, d))
 
-nodes :: Functor t => Lens' t (NodeState s f) (f (Node s f))
+nodes :: Functor t => Lens' t (UnifyState s f) (f (Node s f))
 nodes =
   lens
   (\ (_, _, c, _) -> c)
   (\ (a, b, _, d) c -> (a, b, c, d))
 
-color :: Functor t => Lens' t (NodeState s f) Color
+color :: Functor t => Lens' t (UnifyState s f) Color
 color =
   lens
   (\ (_, _, _, d) -> d)
   (\ (a, b, c, _) d -> (a, b, c, d))
 
+getUnifyState :: Node s f -> BindingFlag -> f (Node s f) -> ST s (UnifyState s f)
+getUnifyState n bf ns =
+  (,,,) <$>
+  (Path.cons n <$> n^!unifyRef.contents.binder) <*>
+  pure bf <*>
+  pure ns <*>
+  getColor n bf
+
 type MorphismRef s = UnionFind.Ref s Morphism
+
+newMorphismRef :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
+newMorphismRef n bf ns = do
+  let m = morphism ns
+  setMorphism n m bf
+  UnionFind.new m
 
 type Binder s f = Path (Node s f)
 
@@ -75,7 +138,32 @@ data BindingFlag = Flexible | Rigid deriving (Eq, Ord)
 
 data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
 
+setMorphism :: Node s f -> Morphism -> BindingFlag -> ST s ()
+setMorphism n m = UnionFind.modify (n^.morphismRef) . max . mkMorphism m
+
+morphism :: Matchable f => f (Node s f) -> Morphism
+morphism xs
+  | polymorphic xs = Polymorphic
+  | otherwise = Monomorphic
+
+mkMorphism :: Morphism -> BindingFlag -> Morphism
+mkMorphism = curry $ \ case
+  (Monomorphic, _) -> Monomorphic
+  (Inert, _) -> Inert
+  (Polymorphic, Flexible) -> Polymorphic
+  (Polymorphic, Rigid) -> Inert
+
 data Color = Green | Orange | Red deriving (Eq, Ord)
+
+getColor :: Node s f -> BindingFlag -> ST s Color
+getColor n bf = mkColor <$> n^!unifyRef.contents.color <*> pure bf
+
+mkColor :: Color -> BindingFlag -> Color
+mkColor = curry $ \ case
+  (_, Rigid) -> Orange
+  (Green, Flexible) -> Green
+  (Orange, Flexible) -> Red
+  (Red, Flexible) -> Red
 
 data Permission = M | I | G | O | R deriving (Eq, Ord)
 
@@ -93,44 +181,5 @@ mkPermission = curry $ \ case
   (Orange, _) -> O
   (Red, _) -> R
 
-new :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
-new n bf ns = do
-  rr <- UnionFind.new =<< Path.cons n <$> n^!rebindRef.contents
-  b <- Path.cons n <$> n^!unifyRef.contents.binder
-  c <- getColor n bf
-  ur <- UnionFind.new (b, bf, ns, c)
-  let m = morphism ns
-  mr <- UnionFind.new m
-  setMorphism n m bf
-  pure $ Node rr ur mr
-
-getColor :: Node s f -> BindingFlag -> ST s Color
-getColor n bf = mkColor <$> n^!unifyRef.contents.color <*> pure bf
-
-mkColor :: Color -> BindingFlag -> Color
-mkColor = curry $ \ case
-  (_, Rigid) -> Orange
-  (Green, Flexible) -> Green
-  (Orange, Flexible) -> Red
-  (Red, Flexible) -> Red
-
-setMorphism :: Node s f -> Morphism -> BindingFlag -> ST s ()
-setMorphism n m = UnionFind.modify (n^.morphismRef) . max . mkMorphism m
-
-morphism :: Matchable f => f (Node s f) -> Morphism
-morphism xs
-  | polymorphic xs = Polymorphic
-  | otherwise = Monomorphic
-
-mkMorphism :: Morphism -> BindingFlag -> Morphism
-mkMorphism = curry $ \ case
-  (Monomorphic, _) -> Monomorphic
-  (Inert, _) -> Inert
-  (Polymorphic, Flexible) -> Polymorphic
-  (Polymorphic, Rigid) -> Inert
-
-class Matchable f where
-  zipMatch :: f a -> f b -> Maybe (f (a, b))
-  bottom :: f a -> Bool
-  polymorphic :: f a -> Bool
-  polymorphic = bottom
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM p m = p >>= bool (return ()) m

@@ -9,22 +9,28 @@ module UnionFind
        , write
        , modify
        , union
+       , (===)
+       , (/==)
        ) where
 
 import Control.Applicative
 import Control.Category
 import Control.Monad
 import Control.Monad.ST
+import Data.Bool
 import Data.Coerce
+import Data.Eq
 import Data.Function (($), fix, flip)
 import Data.Ord
 import Data.Word
 import Lens
-import Prelude (($!), (/=), minBound)
+import Prelude (($!), minBound)
 import qualified ST
 
 -- $setup
 -- >>> import Prelude (succ)
+
+infix 4 ===, /==
 
 newtype Ref s a = Ref (ST.Ref s (Value s a))
 
@@ -108,6 +114,56 @@ union ref1 ref2 = do
        writeReprRef s2 $! Link $! s1^.reprRef
      GT ->
        writeReprRef s2 $! Link $! s1^.reprRef
+
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   x === x
+-- :}
+-- True
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   y <- UnionFind.new 'b'
+--   x === y
+-- :}
+-- False
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   y <- UnionFind.new 'b'
+--   UnionFind.union x y
+--   x === y
+-- :}
+-- True
+(===) :: Ref s a -> Ref s a -> ST s Bool
+ref1 === ref2 = (==) <$> ref1^!semipruned.reprRef <*> ref2^!semipruned.reprRef
+
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   x /== x
+-- :}
+-- False
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   y <- UnionFind.new 'b'
+--   x /== y
+-- :}
+-- True
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   y <- UnionFind.new 'b'
+--   UnionFind.union x y
+--   x /== y
+-- :}
+-- False
+(/==) :: Ref s a -> Ref s a -> ST s Bool
+ref1 /== ref2 = (/=) <$> ref1^!semipruned.reprRef <*> ref2^!semipruned.reprRef
 
 data Semipruned s a =
   Semipruned
