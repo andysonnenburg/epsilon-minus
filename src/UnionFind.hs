@@ -96,7 +96,7 @@ modify ref f = semiprune ref >>= flip modifySemipruned f
 -- runST $ do
 --   x <- UnionFind.new 'a'
 --   y <- UnionFind.new 'b'
---   union x y
+--   UnionFind.union x y
 --   UnionFind.write y 'c'
 --   UnionFind.read x
 -- :}
