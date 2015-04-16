@@ -121,6 +121,7 @@ import Text.Show
 --     scale (`div` 2) arbitrary
 -- :}
 --
+-- >>> pattern NonEmptyIntPaths xs = IntPaths (NonEmpty xs)
 -- >>> pattern TwoIntPaths xs ys = IntPaths (Two xs ys)
 
 data Path a
@@ -225,8 +226,8 @@ unsafeDropTree _ _ _ xs = xs
 
 -- |
 -- prop> \ (TwoIntPaths xs ys) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
--- prop> \ (IntPaths (NonEmpty xs)) -> foldr1 lca xs == toList (foldr1 Path.lca (Path.fromList <$> xs))
--- prop> \ (IntPaths (NonEmpty xs)) -> foldl1 lca xs == toList (foldl1 Path.lca (Path.fromList <$> xs))
+-- prop> \ (NonEmptyIntPaths xs) -> foldr1 lca xs == toList (foldr1 Path.lca (Path.fromList <$> xs))
+-- prop> \ (NonEmptyIntPaths xs) -> foldl1 lca xs == toList (foldl1 Path.lca (Path.fromList <$> xs))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
