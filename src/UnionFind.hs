@@ -122,6 +122,7 @@ union ref1 ref2 = do
 --   x === x
 -- :}
 -- True
+--
 -- >>> :{
 -- runST $ do
 --   x <- UnionFind.new 'a'
@@ -129,6 +130,7 @@ union ref1 ref2 = do
 --   x === y
 -- :}
 -- False
+--
 -- >>> :{
 -- runST $ do
 --   x <- UnionFind.new 'a'
@@ -147,6 +149,7 @@ ref1 === ref2 = (==) <$> ref1^!semipruned.reprRef <*> ref2^!semipruned.reprRef
 --   x /== x
 -- :}
 -- False
+--
 -- >>> :{
 -- runST $ do
 --   x <- UnionFind.new 'a'
@@ -154,6 +157,7 @@ ref1 === ref2 = (==) <$> ref1^!semipruned.reprRef <*> ref2^!semipruned.reprRef
 --   x /== y
 -- :}
 -- True
+--
 -- >>> :{
 -- runST $ do
 --   x <- UnionFind.new 'a'
