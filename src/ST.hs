@@ -4,6 +4,7 @@ module ST
        , new
        , read
        , write
+       , modify
        ) where
 
 import Control.Monad.ST
@@ -19,3 +20,6 @@ read = readSTRef
 
 write :: Ref s a -> a -> ST s ()
 write = writeSTRef
+
+modify :: Ref s a -> (a -> a) -> ST s ()
+modify = modifySTRef

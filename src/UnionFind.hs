@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 module UnionFind
@@ -6,6 +7,7 @@ module UnionFind
        , new
        , read
        , write
+       , modify
        , union
        ) where
 
@@ -14,12 +16,15 @@ import Control.Category
 import Control.Monad
 import Control.Monad.ST
 import Data.Coerce
-import Data.Function (($), fix)
+import Data.Function (($), fix, flip)
 import Data.Ord
 import Data.Word
 import Lens
 import Prelude (($!), (/=), minBound)
 import qualified ST
+
+-- $setup
+-- >>> import Prelude (succ)
 
 newtype Ref s a = Ref (ST.Ref s (Value s a))
 
@@ -27,7 +32,7 @@ data Value s a
   = Repr {-# UNPACK #-} !(Ranked a)
   | Link {-# UNPACK #-} !(ST.Ref s (Value s a))
 
-data Ranked a = Ranked {-# UNPACK #-} !Rank a
+data Ranked a = Ranked {-# UNPACK #-} !Rank a deriving Functor
 
 rank :: Functor f => Lens' f (Ranked a) Rank
 rank =
@@ -68,6 +73,17 @@ write :: Ref s a -> a -> ST s ()
 write ref x = do
   s <- semiprune ref
   writeReprRef s $! Repr $! s^.repr&unranked .~ x
+
+-- |
+-- >>> :{
+-- runST $ do
+--   x <- UnionFind.new 'a'
+--   UnionFind.modify x succ
+--   UnionFind.read x
+-- :}
+-- 'b'
+modify :: Ref s a -> (a -> a) -> ST s ()
+modify ref f = semiprune ref >>= flip modifySemipruned f
 
 -- |
 -- >>> :{
@@ -124,3 +140,6 @@ semiprune = coerce >>> fix (\ rec' ref -> ST.read ref >>= \ case
 
 writeReprRef :: Semipruned s a -> Value s a -> ST s ()
 writeReprRef = ST.write . get reprRef
+
+modifySemipruned :: Semipruned s a -> (a -> a) -> ST s ()
+modifySemipruned s f = ST.write (s^.reprRef) (Repr (f <$> s^.repr))
