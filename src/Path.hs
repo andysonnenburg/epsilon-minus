@@ -46,6 +46,9 @@ import Text.Show
 -- >>> import Prelude (Enum, pred)
 -- >>> import Test.QuickCheck
 --
+-- >>> deriving instance Foldable NonEmptyList
+-- >>> deriving instance Traversable NonEmptyList
+--
 -- >>> :{
 -- let uncons = \ case
 --       x:xs -> Just (x, xs)
@@ -119,18 +122,6 @@ import Text.Show
 -- :}
 --
 -- >>> pattern TwoIntPaths xs ys = IntPaths (Two xs ys)
---
--- >>> :{
--- data Three a = Three a a a deriving (Show, Functor, Foldable, Traversable)
--- instance Arbitrary a => Arbitrary (Three a) where
---   arbitrary =
---     Three <$>
---     scale (`div` 3) arbitrary <*>
---     scale (`div` 3) arbitrary <*>
---     scale (`div` 3) arbitrary
--- :}
---
--- >>> pattern ThreeIntPaths xs ys zs = IntPaths (Three xs ys zs)
 
 data Path a
   = Cons {-# UNPACK #-} !Int (Tree a) (Path a)
@@ -234,8 +225,8 @@ unsafeDropTree _ _ _ xs = xs
 
 -- |
 -- prop> \ (TwoIntPaths xs ys) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
--- prop> \ (ThreeIntPaths xs ys zs) -> lca (lca xs ys) zs == toList (Path.lca (Path.lca (Path.fromList xs) (Path.fromList ys)) (Path.fromList zs))
--- prop> \ (ThreeIntPaths xs ys zs) -> lca xs (lca zs ys) == toList (Path.lca (Path.fromList xs) (Path.lca (Path.fromList ys) (Path.fromList zs)))
+-- prop> \ (IntPaths (NonEmpty xs)) -> foldr1 lca xs == toList (foldr1 Path.lca (Path.fromList <$> xs))
+-- prop> \ (IntPaths (NonEmpty xs)) -> foldl1 lca xs == toList (foldl1 Path.lca (Path.fromList <$> xs))
 lca :: Eq a => Path a -> Path a -> Path a
 lca xs ys = coerce $ lcaM (\ x y -> Identity $ x == y) xs ys
 
