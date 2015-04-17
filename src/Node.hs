@@ -74,59 +74,41 @@ morphismRef =
 
 -- |
 -- >>> :{
--- data T a = V | F a a deriving (Show, Functor, Foldable, Traversable)
--- instance Matchable T where
+-- data N a = Z | S a deriving (Show, Functor, Foldable, Traversable)
+-- instance Matchable N where
 --   zipMatch = curry $ \ case
---     (V, V) -> Just V
---     (F a_1 b_1, F a_2 b_2) -> Just (F (a_1, a_2) (b_1, b_2))
+--     (Z, Z) -> Just Z
+--     (S x, S y) -> Just (S (x, y))
 --     _ -> Nothing
 --   bottom = \ case
---     V -> True
+--     Z -> True
 --     _ -> False
 -- :}
 --
 -- :{
 -- runST $ mdo
---   x <- Node.new f Flexible V
---   y <- Node.new f Flexible V
---   f <- Node.newRoot (F x y)
---   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+--   x0 <- Node.new f Flexible Z
+--   x1 <- Node.newRoot (S x0)
+--   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
--- ((Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
+-- ((Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
 --
 -- :{
 -- runST $ mdo
---   x <- Node.new f Rigid V
---   y <- Node.new f Flexible V
---   f <- Node.newRoot (F x y)
---   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+--   x0 <- Node.new f Rigid Z
+--   x1 <- Node.newRoot (S x0)
+--   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
--- ((Rigid, Orange, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
+-- ((Rigid, Orange, Polymorphic), (Flexible, Green, Polymorphic))
 --
 -- :{
 -- runST $ mdo
---   x <- Node.new f Rigid V
---   y <- Node.new f Flexible V
---   f <- Node.newRoot (F x y)
---   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+--   x0 <- Node.new f Flexible Z
+--   x1 <- Node.new f Rigid (S x0)
+--   x2 <- Node.newRoot (S x1)
+--   (,,) <$> readRefs x0 <*> readRefs x1 <*> readRefs x2
 -- :}
--- ((Rigid, Orange, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
---
--- :{
--- runST $ mdo
---   x <- Node.new g Flexible V
---   y <- Node.new g Flexible V
---   g <- Node.new f Rigid (F x y)
---   z <- Node.new f Flexible V
---   f <- Node.newRoot (F g z)
---   (,,,,)
---     <$> readRefs x
---     <*> readRefs y
---     <*> readRefs g
---     <*> readRefs z
---     <*> readRefs f
--- :}
--- ((Flexible, Red, Polymorphic), (Flexible, Red, Polymorphic), (Red, Orange, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
+-- ((Flexible, Red, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
 new :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
 new n bf ns =
   Node <$>
