@@ -9,7 +9,6 @@ module Node
        ) where
 
 import Contents
-import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.ST
@@ -126,22 +125,47 @@ newUnbound ns =
 type Unify s = MaybeT (ST s)
 
 unify :: Matchable f => Node s f -> Node s f -> Unify s ()
-unify n_x n_y =
+unify n_x n_y = do
   rebind n_x n_y
+  unify' n_x n_y
 
 rebind :: Matchable f => Node s f -> Node s f -> Unify s ()
 rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
   lift $ do
+    unifyRebindRef (n_x^.rebindRef) (n_y^.rebindRef)
     whenM (bottom <$> n_x^!unifyRef.contents.nodes) $
       traverse_ (flip rebindVirtual n_y) =<< n_y^!unifyRef.contents.nodes
     whenM (bottom <$> n_y^!unifyRef.contents.nodes) $
       traverse_ (flip rebindVirtual n_x) =<< n_x^!unifyRef.contents.nodes
-    unifyRebindRef (n_x^.rebindRef) (n_y^.rebindRef)
   MaybeT
     (zipMatch <$>
      n_x^!unifyRef.contents.nodes <*>
      n_y^!unifyRef.contents.nodes) >>=
     traverse_ (uncurry rebind)
+
+unify' :: Matchable f => Node s f -> Node s f -> Unify s ()
+unify' n_x n_y = whenM (lift $ n_x^.morphismRef /== n_y^.morphismRef) $ do
+  lift $ do
+    resetMorphism n_x
+    unionMorphismRef n_x n_y
+  MaybeT
+    (zipMatch <$>
+     n_x^!unifyRef.contents.nodes <*>
+     n_y^!unifyRef.contents.nodes) >>=
+     traverse_ (uncurry unify')
+  lift $
+    unifyUnifyRef (n_x^.unifyRef) (n_y^.unifyRef)
+
+resetMorphism :: Matchable f => Node s f -> ST s ()
+resetMorphism n =
+  UnionFind.write (n^.morphismRef) =<< morphism <$> n^!unifyRef.contents.nodes
+
+unionMorphismRef :: Node s f -> Node s f -> ST s ()
+unionMorphismRef n_x n_y =
+  UnionFind.union (n_x^.morphismRef) (n_y^.morphismRef)
+
+unifyUnifyRef :: UnifyRef s f -> UnifyRef s f -> ST s ()
+unifyUnifyRef ref_x ref_y = UnionFind.union ref_x ref_y
 
 rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
 rebindVirtual n n' = do
@@ -149,7 +173,6 @@ rebindVirtual n n' = do
     b_2 <- Path.cons n' <$> n'^!rebindRef.contents
     meetRebindState b_1 b_2
   traverse_ (flip rebindVirtual n) =<< n^!unifyRef.contents.nodes
-  where
 
 unifyRebindRef :: RebindRef s f -> RebindRef s f -> ST s ()
 unifyRebindRef ref_x ref_y = do
@@ -157,9 +180,6 @@ unifyRebindRef ref_x ref_y = do
     b_y <- ref_y^!contents
     meetRebindState b_x b_y
   UnionFind.union ref_x ref_y
-
-modifyM :: UnionFind.Ref s a -> (a -> ST s a) -> ST s ()
-modifyM ref f = UnionFind.write ref =<< f =<< UnionFind.read ref
 
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
@@ -284,6 +304,9 @@ mkPermission = curry $ \ case
   (Green, _) -> G
   (Orange, _) -> O
   (Red, _) -> R
+
+modifyM :: UnionFind.Ref s a -> (a -> ST s a) -> ST s ()
+modifyM ref f = UnionFind.write ref =<< f =<< UnionFind.read ref
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM p m = p >>= bool (return ()) m
