@@ -6,6 +6,7 @@ main :: IO ()
 main =
   doctest
   [ "-isrc"
+  , "src/Node.hs"
   , "src/Path.hs"
   , "src/UnionFind.hs"
   ]

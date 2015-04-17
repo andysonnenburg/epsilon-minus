@@ -2,6 +2,7 @@
 module Node
        ( Node
        , new
+       , newRoot
        , unify
        , Matchable (..)
        , BindingFlag (..)
@@ -20,6 +21,32 @@ import Path (Path)
 import qualified Path
 import UnionFind ((===), (/==))
 import qualified UnionFind
+
+-- $setup
+-- >>> :set -XLambdaCase
+-- >>> :set -XRecursiveDo
+-- >>> :set -XDeriveFunctor
+-- >>> :set -XDeriveFoldable
+-- >>> :set -XFlexibleContexts
+-- >>> :set -XDeriveTraversable
+-- >>> import qualified Node
+--
+-- >>> :{
+-- let readUnifyRef n = do
+--       (_, bf, _, c) <- n^!unifyRef.contents
+--       pure (bf, c)
+-- :}
+--
+-- >>> :{
+-- let readMorphismRef n = n^!morphismRef.contents
+-- :}
+--
+-- >>> :{
+-- let readRefs n = do
+--       (bf, c) <- readUnifyRef n
+--       m <- readMorphismRef n
+--       pure (bf, c, m)
+-- :}
 
 data Node s f =
   Node
@@ -45,12 +72,74 @@ morphismRef =
   (\ (Node _ _ z) -> z)
   (\ (Node x y _) z -> Node x y z)
 
+-- |
+-- >>> :{
+-- data T a = V | F a a deriving (Show, Functor, Foldable, Traversable)
+-- instance Matchable T where
+--   zipMatch = curry $ \ case
+--     (V, V) -> Just V
+--     (F a_1 b_1, F a_2 b_2) -> Just (F (a_1, a_2) (b_1, b_2))
+--     _ -> Nothing
+--   bottom = \ case
+--     V -> True
+--     _ -> False
+-- :}
+--
+-- :{
+-- runST $ mdo
+--   x <- Node.new f Flexible V
+--   y <- Node.new f Flexible V
+--   f <- Node.newRoot (F x y)
+--   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+-- :}
+-- ((Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
+--
+-- :{
+-- runST $ mdo
+--   x <- Node.new f Rigid V
+--   y <- Node.new f Flexible V
+--   f <- Node.newRoot (F x y)
+--   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+-- :}
+-- ((Rigid, Orange, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
+--
+-- :{
+-- runST $ mdo
+--   x <- Node.new f Rigid V
+--   y <- Node.new f Flexible V
+--   f <- Node.newRoot (F x y)
+--   (,,) <$> readRefs x <*> readRefs y <*> readRefs f
+-- :}
+-- ((Rigid, Orange, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
+--
+-- :{
+-- runST $ mdo
+--   x <- Node.new g Flexible V
+--   y <- Node.new g Flexible V
+--   g <- Node.new f Rigid (F x y)
+--   z <- Node.new f Flexible V
+--   f <- Node.newRoot (F g z)
+--   (,,,,)
+--     <$> readRefs x
+--     <*> readRefs y
+--     <*> readRefs g
+--     <*> readRefs z
+--     <*> readRefs f
+-- :}
+-- ((Flexible, Red, Polymorphic), (Flexible, Red, Polymorphic), (Red, Orange, Polymorphic), (Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
 new :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
 new n bf ns =
   Node <$>
   newRebindRef n <*>
   newUnifyRef n bf ns <*>
   newMorphismRef n bf ns
+
+newRoot :: Matchable f => f (Node s f) -> ST s (Node s f)
+newRoot ns =
+  Node <$>
+  newRootRebindRef <*>
+  newRootUnifyRef ns <*>
+  newRootMorphismRef ns
 
 type Unify s = MaybeT (ST s)
 
@@ -83,12 +172,18 @@ type RebindRef s f = UnionFind.Ref s (RebindState s f)
 newRebindRef :: Node s f -> ST s (RebindRef s f)
 newRebindRef n = Path.cons n <$> n^!rebindRef.contents >>= UnionFind.new
 
+newRootRebindRef :: ST s (RebindRef s f)
+newRootRebindRef = UnionFind.new mempty
+
 type RebindState s f = Binder s f
 
 type UnifyRef s f = UnionFind.Ref s (UnifyState s f)
 
 newUnifyRef :: Node s f -> BindingFlag -> f (Node s f) -> ST s (UnifyRef s f)
 newUnifyRef n bf ns = UnionFind.new =<< getUnifyState n bf ns
+
+newRootUnifyRef :: f (Node s f) -> ST s (UnifyRef s f)
+newRootUnifyRef = UnionFind.new . rootUnifyState
 
 type UnifyState s f = (Binder s f, BindingFlag, f (Node s f), Color)
 
@@ -124,6 +219,9 @@ getUnifyState n bf ns =
   pure ns <*>
   getColor n bf
 
+rootUnifyState :: f (Node s f) -> UnifyState s f
+rootUnifyState ns = (mempty, Flexible, ns, Green)
+
 type MorphismRef s = UnionFind.Ref s Morphism
 
 newMorphismRef :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
@@ -131,6 +229,9 @@ newMorphismRef n bf ns = do
   let m = morphism ns
   setMorphism n m bf
   UnionFind.new m
+
+newRootMorphismRef :: Matchable f => f (Node s f) -> ST s (MorphismRef s)
+newRootMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Node s f)
 
