@@ -87,7 +87,7 @@ morphismRef =
 --
 -- :{
 -- runST $ mdo
---   x0 <- Node.new f Flexible Z
+--   x0 <- Node.new x1 Flexible Z
 --   x1 <- Node.newRoot (S x0)
 --   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
@@ -95,7 +95,7 @@ morphismRef =
 --
 -- :{
 -- runST $ mdo
---   x0 <- Node.new f Rigid Z
+--   x0 <- Node.new x1 Rigid Z
 --   x1 <- Node.newRoot (S x0)
 --   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
@@ -103,8 +103,8 @@ morphismRef =
 --
 -- :{
 -- runST $ mdo
---   x0 <- Node.new f Flexible Z
---   x1 <- Node.new f Rigid (S x0)
+--   x0 <- Node.new x1 Flexible Z
+--   x1 <- Node.new x2 Rigid (S x0)
 --   x2 <- Node.newRoot (S x1)
 --   (,,) <$> readRefs x0 <*> readRefs x1 <*> readRefs x2
 -- :}
