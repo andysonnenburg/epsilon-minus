@@ -2,7 +2,7 @@
 module Node
        ( Node
        , new
-       , newRoot
+       , newUnbound
        , unify
        , Matchable (..)
        , BindingFlag (..)
@@ -88,7 +88,7 @@ morphismRef =
 -- :{
 -- runST $ mdo
 --   x0 <- Node.new x1 Flexible Z
---   x1 <- Node.newRoot (S x0)
+--   x1 <- Node.newUnbound (S x0)
 --   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
 -- ((Flexible, Green, Polymorphic), (Flexible, Green, Polymorphic))
@@ -96,7 +96,7 @@ morphismRef =
 -- :{
 -- runST $ mdo
 --   x0 <- Node.new x1 Rigid Z
---   x1 <- Node.newRoot (S x0)
+--   x1 <- Node.newUnbound (S x0)
 --   (,) <$> readRefs x0 <*> readRefs x1
 -- :}
 -- ((Rigid, Orange, Polymorphic), (Flexible, Green, Polymorphic))
@@ -105,7 +105,7 @@ morphismRef =
 -- runST $ mdo
 --   x0 <- Node.new x1 Flexible Z
 --   x1 <- Node.new x2 Rigid (S x0)
---   x2 <- Node.newRoot (S x1)
+--   x2 <- Node.newUnbound (S x1)
 --   (,,) <$> readRefs x0 <*> readRefs x1 <*> readRefs x2
 -- :}
 -- ((Flexible, Red, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
@@ -116,12 +116,12 @@ new n bf ns =
   newUnifyRef n bf ns <*>
   newMorphismRef n bf ns
 
-newRoot :: Matchable f => f (Node s f) -> ST s (Node s f)
-newRoot ns =
+newUnbound :: Matchable f => f (Node s f) -> ST s (Node s f)
+newUnbound ns =
   Node <$>
-  newRootRebindRef <*>
-  newRootUnifyRef ns <*>
-  newRootMorphismRef ns
+  newUnboundRebindRef <*>
+  newUnboundUnifyRef ns <*>
+  newUnboundMorphismRef ns
 
 type Unify s = MaybeT (ST s)
 
@@ -132,16 +132,37 @@ unify n_x n_y =
 rebind :: Matchable f => Node s f -> Node s f -> Unify s ()
 rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
   lift $ do
-    b <- join $ lcaM' <$> n_x^!rebindRef.contents <*> n_y^!rebindRef.contents
-    UnionFind.union (n_x^.rebindRef) (n_y^.rebindRef)
-    UnionFind.write (n_x^.rebindRef) b
+    whenM (bottom <$> n_x^!unifyRef.contents.nodes) $
+      traverse_ (flip rebindVirtual n_y) =<< n_y^!unifyRef.contents.nodes
+    whenM (bottom <$> n_y^!unifyRef.contents.nodes) $
+      traverse_ (flip rebindVirtual n_x) =<< n_x^!unifyRef.contents.nodes
+    unifyRebindRef (n_x^.rebindRef) (n_y^.rebindRef)
   MaybeT
     (zipMatch <$>
      n_x^!unifyRef.contents.nodes <*>
      n_y^!unifyRef.contents.nodes) >>=
     traverse_ (uncurry rebind)
+
+rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
+rebindVirtual n n' = do
+  modifyM (n^.rebindRef) $ \ b_1 -> do
+    b_2 <- Path.cons n' <$> n'^!rebindRef.contents
+    meetRebindState b_1 b_2
+  traverse_ (flip rebindVirtual n) =<< n^!unifyRef.contents.nodes
   where
-    lcaM' = Path.lcaM ((===) `on` get rebindRef)
+
+unifyRebindRef :: RebindRef s f -> RebindRef s f -> ST s ()
+unifyRebindRef ref_x ref_y = do
+  modifyM ref_x $ \ b_x -> do
+    b_y <- ref_y^!contents
+    meetRebindState b_x b_y
+  UnionFind.union ref_x ref_y
+
+modifyM :: UnionFind.Ref s a -> (a -> ST s a) -> ST s ()
+modifyM ref f = UnionFind.write ref =<< f =<< UnionFind.read ref
+
+meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
+meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
 class Traversable f => Matchable f where
   zipMatch :: f a -> f b -> Maybe (f (a, b))
@@ -154,8 +175,8 @@ type RebindRef s f = UnionFind.Ref s (RebindState s f)
 newRebindRef :: Node s f -> ST s (RebindRef s f)
 newRebindRef n = Path.cons n <$> n^!rebindRef.contents >>= UnionFind.new
 
-newRootRebindRef :: ST s (RebindRef s f)
-newRootRebindRef = UnionFind.new mempty
+newUnboundRebindRef :: ST s (RebindRef s f)
+newUnboundRebindRef = UnionFind.new mempty
 
 type RebindState s f = Binder s f
 
@@ -164,8 +185,8 @@ type UnifyRef s f = UnionFind.Ref s (UnifyState s f)
 newUnifyRef :: Node s f -> BindingFlag -> f (Node s f) -> ST s (UnifyRef s f)
 newUnifyRef n bf ns = UnionFind.new =<< getUnifyState n bf ns
 
-newRootUnifyRef :: f (Node s f) -> ST s (UnifyRef s f)
-newRootUnifyRef = UnionFind.new . rootUnifyState
+newUnboundUnifyRef :: f (Node s f) -> ST s (UnifyRef s f)
+newUnboundUnifyRef = UnionFind.new . unboundUnifyState
 
 type UnifyState s f = (Binder s f, BindingFlag, f (Node s f), Color)
 
@@ -201,8 +222,8 @@ getUnifyState n bf ns =
   pure ns <*>
   getColor n bf
 
-rootUnifyState :: f (Node s f) -> UnifyState s f
-rootUnifyState ns = (mempty, Flexible, ns, Green)
+unboundUnifyState :: f (Node s f) -> UnifyState s f
+unboundUnifyState ns = (mempty, Flexible, ns, Green)
 
 type MorphismRef s = UnionFind.Ref s Morphism
 
@@ -212,8 +233,8 @@ newMorphismRef n bf ns = do
   setMorphism n m bf
   UnionFind.new m
 
-newRootMorphismRef :: Matchable f => f (Node s f) -> ST s (MorphismRef s)
-newRootMorphismRef = UnionFind.new . morphism
+newUnboundMorphismRef :: Matchable f => f (Node s f) -> ST s (MorphismRef s)
+newUnboundMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Node s f)
 
