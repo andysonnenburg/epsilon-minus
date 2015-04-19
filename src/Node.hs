@@ -169,7 +169,7 @@ unify n_x n_y = do
 rebind :: Unifiable f => Node s f -> Node s f -> Unify s ()
 rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
   lift $ do
-    unifyRebindRef (n_x^.rebindRef) (n_y^.rebindRef)
+    unifyRebindRef n_x n_y
     whenM (isBottom <$> n_x^!unifyRef.contents.nodes) $
       traverse_ (flip rebindVirtual n_y) =<< n_y^!unifyRef.contents.nodes
     whenM (isBottom <$> n_y^!unifyRef.contents.nodes) $
@@ -180,15 +180,11 @@ rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
      n_y^!unifyRef.contents.nodes) >>=
     traverse_ (uncurry rebind)
 
-rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
-rebindVirtual n n' = do
-  modifyM (n^.rebindRef) $ \ b_1 -> do
-    b_2 <- Path.cons n' <$> n'^!rebindRef.contents
-    meetRebindState b_1 b_2
-  traverse_ (flip rebindVirtual n) =<< n^!unifyRef.contents.nodes
+unifyRebindRef :: Node s f -> Node s f -> ST s ()
+unifyRebindRef n_x n_y = unifyRebindState (n_x^.rebindRef) (n_y^.rebindRef)
 
-unifyRebindRef :: RebindRef s f -> RebindRef s f -> ST s ()
-unifyRebindRef ref_x ref_y = do
+unifyRebindState :: RebindRef s f -> RebindRef s f -> ST s ()
+unifyRebindState ref_x ref_y = do
   modifyM ref_x $ \ b_x -> do
     b_y <- ref_y^!contents
     meetRebindState b_x b_y
@@ -196,6 +192,13 @@ unifyRebindRef ref_x ref_y = do
 
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
+
+rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
+rebindVirtual n n' = do
+  modifyM (n^.rebindRef) $ \ b_1 -> do
+    b_2 <- Path.cons n' <$> n'^!rebindRef.contents
+    meetRebindState b_1 b_2
+  traverse_ (flip rebindVirtual n) =<< n^!unifyRef.contents.nodes
 
 unify' :: Unifiable f => Node s f -> Node s f -> Unify s ()
 unify' n_x n_y = whenM (lift $ n_x^.unifyRef /== n_y^.unifyRef) $ do
