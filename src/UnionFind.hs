@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module UnionFind
        ( Ref
        , new
@@ -20,11 +21,11 @@ import Control.Monad.ST
 import Data.Bool
 import Data.Coerce
 import Data.Eq
-import Data.Function (($), fix, flip)
+import Data.Function (fix, flip, ($))
 import Data.Ord
 import Data.Word
 import Lens
-import Prelude (($!), minBound)
+import Prelude (minBound, ($!))
 import qualified ST
 
 -- $setup

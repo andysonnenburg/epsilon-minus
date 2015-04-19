@@ -14,18 +14,18 @@ module Path
 
 import Control.Applicative
 import Control.Monad
-import Data.Bool
 import Data.Bits
+import Data.Bool
 import Data.Coerce
 import Data.Eq
 import Data.Foldable
 import Data.Function
 import Data.Functor.Identity
-import Data.Traversable
 import Data.Maybe (Maybe (..))
 import Data.Monoid
 import Data.Ord
-import Prelude (Num (..), Int, div, seq, subtract)
+import Data.Traversable
+import Prelude (Int, Num (..), div, seq, subtract)
 import Text.Show
 
 -- $setup

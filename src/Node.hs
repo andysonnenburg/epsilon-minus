@@ -10,16 +10,16 @@ module Node
 
 import Contents
 import Control.Applicative
+import Control.Monad.ST
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.ST
 import Data.Bool
 import Data.Foldable
 import Data.Function
 import Lens
 import Path (Path)
 import qualified Path
-import UnionFind ((===), (/==))
+import UnionFind ((/==), (===))
 import qualified UnionFind
 
 -- $setup
