@@ -1,24 +1,38 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 module Node
-       ( Node
+       ( Matchable (..)
+       , Unifiable (..)
+       , Inferable (..)
+       , Node
+       , BindingFlag (..)
        , new
        , newUnbound
+       , readBinding
+       , read
        , unify
-       , Matchable (..)
-       , BindingFlag (..)
        ) where
 
 import Contents
 import Control.Applicative
+import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Bool
+import Data.Eq
 import Data.Foldable
 import Data.Function
+import Data.Int (Int)
+import Data.Maybe (Maybe (..))
+import Data.Monoid
+import Data.Ord
+import Data.Traversable
+import Data.Tuple
 import Lens
 import Path (Path)
 import qualified Path
+import Text.Show
 import UnionFind ((/==), (===))
 import qualified UnionFind
 
@@ -81,6 +95,8 @@ morphismRef =
   (\ (Node _ _ z) -> z)
   (\ (Node x y _) z -> Node x y z)
 
+data BindingFlag = Flexible | Rigid deriving (Show, Eq, Ord)
+
 -- |
 -- >>> :{
 -- data N a = Z | S a deriving (Show, Functor, Foldable, Traversable)
@@ -119,23 +135,33 @@ morphismRef =
 --   (,,) <$> readRefs x0 <*> readRefs x1 <*> readRefs x2
 -- :}
 -- ((Flexible, Red, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
-new :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
+new :: Unifiable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
 new n bf ns =
   Node <$>
   newRebindRef n <*>
   newUnifyRef n bf ns <*>
   newMorphismRef n bf ns
 
-newUnbound :: Matchable f => f (Node s f) -> ST s (Node s f)
+newUnbound :: Unifiable f => f (Node s f) -> ST s (Node s f)
 newUnbound ns =
   Node <$>
   newUnboundRebindRef <*>
   newUnboundUnifyRef ns <*>
   newUnboundMorphismRef ns
 
+readBinding :: Node s f -> ST s (Maybe (Node s f, BindingFlag))
+readBinding n = do
+  s <- n^!unifyRef.contents
+  case Path.uncons (s^.binder) of
+    Nothing -> pure Nothing
+    Just (n', _) -> pure $ Just (n', s^.bindingFlag)
+
+read :: Node s f -> ST s (f (Node s f))
+read n = n^!unifyRef.contents.nodes
+
 type Unify s = MaybeT (ST s)
 
-unify :: Matchable f => Node s f -> Node s f -> Unify s ()
+unify :: Unifiable f => Node s f -> Node s f -> Unify s ()
 unify n_x n_y = do
   rebind n_x n_y
   unify' n_x n_y
@@ -246,8 +272,6 @@ newUnboundMorphismRef :: Unifiable f => f (Node s f) -> ST s (MorphismRef s)
 newUnboundMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Node s f)
-
-data BindingFlag = Flexible | Rigid deriving (Eq, Ord)
 
 data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
 
