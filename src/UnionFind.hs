@@ -78,7 +78,7 @@ read = mget $ semipruned.repr.unranked
 write :: Ref s a -> a -> ST s ()
 write ref x = do
   s <- semiprune ref
-  writeReprRef s $! Repr $! s^.repr&unranked .~ x
+  writeReprRef s $! Repr $! s^.repr&unranked&= x
 
 -- |
 -- >>> :{
@@ -110,7 +110,7 @@ union ref1 ref2 = do
      LT ->
        writeReprRef s1 $! Link $! s2^.reprRef
      EQ -> do
-       writeReprRef s1 $! Repr $! s1^.repr&rank +~ 1
+       writeReprRef s1 $! Repr $! s1^.repr&rank += 1
        writeReprRef s2 $! Link $! s1^.reprRef
      GT ->
        writeReprRef s2 $! Link $! s1^.reprRef

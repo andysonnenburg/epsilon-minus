@@ -18,8 +18,9 @@ module Lens
        , mget
        , (^!)
        , set
-       , (.~)
-       , (+~)
+       , (&=)
+       , (%=)
+       , (+=)
        ) where
 
 import Control.Applicative
@@ -27,7 +28,7 @@ import Data.Coerce
 import Data.Functor.Identity
 
 infixl 1 &
-infixr 4 .~, +~
+infixr 4 &=, %=, +=
 infixl 8 ^., ^!
 
 (&) :: a -> (a -> b) -> b
@@ -78,8 +79,11 @@ mget l = coerce . l (Effect . Const . pure)
 set :: Setter s t a b -> b -> s -> t
 set l b = runIdentity . l (const $ Identity b)
 
-(.~) :: Setter s t a b -> b -> s -> t
-(.~) = set
+(&=) :: Setter s t a b -> b -> s -> t
+(&=) = set
 
-(+~) :: Num a => Setter s t a a -> a -> s -> t
-(+~) l a = runIdentity . l (Identity . (+ a))
+(%=) :: Setter s t a b -> (a -> b) -> s -> t
+l %= f = runIdentity . l (Identity . f)
+
+(+=) :: Num a => Setter s t a a -> a -> s -> t
+(+=) l a = runIdentity . l (Identity . (+ a))

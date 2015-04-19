@@ -9,6 +9,7 @@ module Node
        ) where
 
 import Contents
+import Control.Applicative
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.ST
@@ -47,6 +48,15 @@ import qualified UnionFind
 --       pure (bf, c, m)
 -- :}
 
+class Traversable f => Matchable f where
+  zipMatch :: f a -> f b -> Maybe (f (a, b))
+
+class Matchable f => Unifiable f where
+  isBottom :: f a -> Bool
+
+class Unifiable f => Inferable f where
+  toInt :: f a -> Int
+
 data Node s f =
   Node
   {-# UNPACK #-} !(RebindRef s f)
@@ -79,7 +89,8 @@ morphismRef =
 --     (Z, Z) -> Just Z
 --     (S x, S y) -> Just (S (x, y))
 --     _ -> Nothing
---   bottom = \ case
+-- instance Unifiable N where
+--   isBottom = \ case
 --     Z -> True
 --     _ -> False
 -- :}
@@ -129,43 +140,19 @@ unify n_x n_y = do
   rebind n_x n_y
   unify' n_x n_y
 
-rebind :: Matchable f => Node s f -> Node s f -> Unify s ()
+rebind :: Unifiable f => Node s f -> Node s f -> Unify s ()
 rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
   lift $ do
     unifyRebindRef (n_x^.rebindRef) (n_y^.rebindRef)
-    whenM (bottom <$> n_x^!unifyRef.contents.nodes) $
+    whenM (isBottom <$> n_x^!unifyRef.contents.nodes) $
       traverse_ (flip rebindVirtual n_y) =<< n_y^!unifyRef.contents.nodes
-    whenM (bottom <$> n_y^!unifyRef.contents.nodes) $
+    whenM (isBottom <$> n_y^!unifyRef.contents.nodes) $
       traverse_ (flip rebindVirtual n_x) =<< n_x^!unifyRef.contents.nodes
   MaybeT
     (zipMatch <$>
      n_x^!unifyRef.contents.nodes <*>
      n_y^!unifyRef.contents.nodes) >>=
     traverse_ (uncurry rebind)
-
-unify' :: Matchable f => Node s f -> Node s f -> Unify s ()
-unify' n_x n_y = whenM (lift $ n_x^.morphismRef /== n_y^.morphismRef) $ do
-  lift $ do
-    resetMorphism n_x
-    unionMorphismRef n_x n_y
-  MaybeT
-    (zipMatch <$>
-     n_x^!unifyRef.contents.nodes <*>
-     n_y^!unifyRef.contents.nodes) >>=
-     traverse_ (uncurry unify')
-  lift $
-    unifyUnifyRef (n_x^.unifyRef) (n_y^.unifyRef)
-
-resetMorphism :: Matchable f => Node s f -> ST s ()
-resetMorphism n =
-  UnionFind.write (n^.morphismRef) =<< morphism <$> n^!unifyRef.contents.nodes
-
-unionMorphismRef :: Node s f -> Node s f -> ST s ()
-unionMorphismRef n_x n_y =
-  UnionFind.union (n_x^.morphismRef) (n_y^.morphismRef)
-
-unifyUnifyRef :: UnifyRef s f -> UnifyRef s f -> ST s ()
-unifyUnifyRef ref_x ref_y = UnionFind.union ref_x ref_y
 
 rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
 rebindVirtual n n' = do
@@ -184,11 +171,13 @@ unifyRebindRef ref_x ref_y = do
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
-class Traversable f => Matchable f where
-  zipMatch :: f a -> f b -> Maybe (f (a, b))
-  bottom :: f a -> Bool
-  polymorphic :: f a -> Bool
-  polymorphic = bottom
+unify' :: Unifiable f => Node s f -> Node s f -> Unify s ()
+unify' n_x n_y = whenM (lift $ n_x^.unifyRef /== n_y^.unifyRef) $ do
+  MaybeT
+    (zipMatch <$>
+     n_x^!unifyRef.contents.nodes <*>
+     n_y^!unifyRef.contents.nodes) >>=
+     traverse_ (uncurry unify')
 
 type RebindRef s f = UnionFind.Ref s (RebindState s f)
 
@@ -247,13 +236,13 @@ unboundUnifyState ns = (mempty, Flexible, ns, Green)
 
 type MorphismRef s = UnionFind.Ref s Morphism
 
-newMorphismRef :: Matchable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
+newMorphismRef :: Unifiable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
 newMorphismRef n bf ns = do
   let m = morphism ns
   setMorphism n m bf
   UnionFind.new m
 
-newUnboundMorphismRef :: Matchable f => f (Node s f) -> ST s (MorphismRef s)
+newUnboundMorphismRef :: Unifiable f => f (Node s f) -> ST s (MorphismRef s)
 newUnboundMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Node s f)
@@ -265,9 +254,9 @@ data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
 setMorphism :: Node s f -> Morphism -> BindingFlag -> ST s ()
 setMorphism n m = UnionFind.modify (n^.morphismRef) . max . mkMorphism m
 
-morphism :: Matchable f => f (Node s f) -> Morphism
+morphism :: Unifiable f => f (Node s f) -> Morphism
 morphism xs
-  | polymorphic xs = Polymorphic
+  | isBottom xs = Polymorphic
   | otherwise = Monomorphic
 
 mkMorphism :: Morphism -> BindingFlag -> Morphism
