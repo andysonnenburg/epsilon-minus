@@ -23,7 +23,7 @@ module Lens
        , (+=)
        ) where
 
-import Control.Applicative
+import Control.Applicative (Const (..))
 import Data.Coerce
 import Data.Functor.Identity
 
@@ -40,7 +40,7 @@ type Lens' f s a = Lens f s s a a
 
 type Getter r s a = Lens' (Const r) s a
 
-type EffectiveGetter m r s a = Lens' (Effect m r) s a
+type EffectiveGetter m r s a = Lens' (ConstMonad m r) s a
 
 type Setter s t a b = Lens Identity s t a b
 
@@ -54,24 +54,25 @@ get l = getConst . l Const
 (^.) = flip get
 
 class (Monad m, Functor f) => Effective m r f | f -> m r where
-  effective :: m r -> f a
-  ineffective :: f a -> m r
+  wrapMonad :: m r -> f a
+  unwrapMonad :: f a -> m r
 
 instance Effective Identity r (Const r) where
-  effective = coerce
-  ineffective = coerce
+  wrapMonad = coerce
+  unwrapMonad = coerce
 
-newtype Effect m r a = Effect (Const (m r) a) deriving (Functor, Applicative)
+newtype ConstMonad m r a =
+  ConstMonad (Const (m r) a) deriving (Functor, Applicative)
 
-instance Monad m => Effective m r (Effect m r) where
-  effective = coerce
-  ineffective = coerce
+instance Monad m => Effective m r (ConstMonad m r) where
+  wrapMonad = coerce
+  unwrapMonad = coerce
 
 mgetter :: Effective m r f => (s -> m a) -> Lens' f s a
-mgetter k f s = effective (k s >>= ineffective . f)
+mgetter k f s = wrapMonad (k s >>= unwrapMonad . f)
 
 mget :: Applicative m => EffectiveGetter m a s a -> s -> m a
-mget l = coerce . l (Effect . Const . pure)
+mget l = coerce . l (ConstMonad . Const . pure)
 
 (^!) :: Applicative m => s -> EffectiveGetter m a s a -> m a
 (^!) = flip mget
@@ -79,11 +80,14 @@ mget l = coerce . l (Effect . Const . pure)
 set :: Setter s t a b -> b -> s -> t
 set l b = runIdentity . l (const $ Identity b)
 
+modify :: Setter s t a b -> (a -> b) -> s -> t
+modify l f = runIdentity . l (Identity . f)
+
 (&=) :: Setter s t a b -> b -> s -> t
 (&=) = set
 
 (%=) :: Setter s t a b -> (a -> b) -> s -> t
-l %= f = runIdentity . l (Identity . f)
+(%=) = modify
 
 (+=) :: Num a => Setter s t a a -> a -> s -> t
-(+=) l a = runIdentity . l (Identity . (+ a))
+l += a = l %= (+ a)
