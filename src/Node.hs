@@ -1,9 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 module Node
-       ( Matchable (..)
+       ( Constructible (..)
+       , Matchable (..)
        , Unifiable (..)
-       , Inferable (..)
        , Node
        , BindingFlag (..)
        , new
@@ -19,11 +19,14 @@ import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.State (gets, StateT, evalStateT, modify)
 import Data.Bool
 import Data.Eq
 import Data.Foldable
 import Data.Function
 import Data.Int (Int)
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Maybe (Maybe (..))
 import Data.Monoid
 import Data.Ord
@@ -62,13 +65,13 @@ import qualified UnionFind
 --       pure (bf, c, m)
 -- :}
 
+class Constructible f where
+  isBottom :: f a -> Bool
+
 class Traversable f => Matchable f where
   zipMatch :: f a -> f b -> Maybe (f (a, b))
 
-class Matchable f => Unifiable f where
-  isBottom :: f a -> Bool
-
-class Unifiable f => Inferable f where
+class (Matchable f, Constructible f) => Unifiable f where
   toInt :: f a -> Int
 
 data Node s f =
@@ -100,12 +103,7 @@ data BindingFlag = Flexible | Rigid deriving (Show, Eq, Ord)
 -- |
 -- >>> :{
 -- data N a = Z | S a deriving (Show, Functor, Foldable, Traversable)
--- instance Matchable N where
---   zipMatch = curry $ \ case
---     (Z, Z) -> Just Z
---     (S x, S y) -> Just (S (x, y))
---     _ -> Nothing
--- instance Unifiable N where
+-- instance Constructible N where
 --   isBottom = \ case
 --     Z -> True
 --     _ -> False
@@ -135,14 +133,14 @@ data BindingFlag = Flexible | Rigid deriving (Show, Eq, Ord)
 --   (,,) <$> readRefs x0 <*> readRefs x1 <*> readRefs x2
 -- :}
 -- ((Flexible, Red, Polymorphic), (Rigid, Orange, Polymorphic), (Flexible, Green, Inert))
-new :: Unifiable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
+new :: Constructible f => Node s f -> BindingFlag -> f (Node s f) -> ST s (Node s f)
 new n bf ns =
   Node <$>
   newRebindRef n <*>
   newUnifyRef n bf ns <*>
   newMorphismRef n bf ns
 
-newUnbound :: Unifiable f => f (Node s f) -> ST s (Node s f)
+newUnbound :: Constructible f => f (Node s f) -> ST s (Node s f)
 newUnbound ns =
   Node <$>
   newUnboundRebindRef <*>
@@ -171,9 +169,9 @@ rebind n_x n_y = whenM (lift $ n_x^.rebindRef /== n_y^.rebindRef) $ do
   lift $ do
     unifyRebindRef n_x n_y
     whenM (isBottom <$> n_x^!unifyRef.contents.nodes) $
-      traverse_ (flip rebindVirtual n_y) =<< n_y^!unifyRef.contents.nodes
+      runRebindVirtual $ rebindVirtualNodes n_x
     whenM (isBottom <$> n_y^!unifyRef.contents.nodes) $
-      traverse_ (flip rebindVirtual n_x) =<< n_x^!unifyRef.contents.nodes
+      runRebindVirtual $ rebindVirtualNodes n_y
   MaybeT
     (zipMatch <$>
      n_x^!unifyRef.contents.nodes <*>
@@ -193,12 +191,25 @@ unifyRebindState ref_x ref_y = do
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
-rebindVirtual :: Foldable f => Node s f -> Node s f -> ST s ()
+type RebindVirtual s = StateT IntSet (ST s)
+
+runRebindVirtual :: RebindVirtual s a -> ST s a
+runRebindVirtual = flip evalStateT mempty
+
+rebindVirtualNodes :: Unifiable f => Node s f -> RebindVirtual s ()
+rebindVirtualNodes n = do
+  ns <- lift $ n^!unifyRef.contents.nodes
+  whenM (gets $ IntSet.notMember $ toInt ns) $ do
+    modify $ IntSet.insert $ toInt ns
+    traverse_ (flip rebindVirtual n) ns
+
+rebindVirtual :: Unifiable f => Node s f -> Node s f -> RebindVirtual s ()
 rebindVirtual n n' = do
-  modifyM (n^.rebindRef) $ \ b_1 -> do
+  lift $ do
+    b_1 <- n^!rebindRef.contents
     b_2 <- Path.cons n' <$> n'^!rebindRef.contents
-    meetRebindState b_1 b_2
-  traverse_ (flip rebindVirtual n) =<< n^!unifyRef.contents.nodes
+    UnionFind.write (n^.rebindRef) =<< meetRebindState b_1 b_2
+  rebindVirtualNodes n
 
 unify' :: Unifiable f => Node s f -> Node s f -> Unify s ()
 unify' n_x n_y = whenM (lift $ n_x^.unifyRef /== n_y^.unifyRef) $ do
@@ -265,13 +276,13 @@ unboundUnifyState ns = (mempty, Flexible, ns, Green)
 
 type MorphismRef s = UnionFind.Ref s Morphism
 
-newMorphismRef :: Unifiable f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
+newMorphismRef :: Constructible f => Node s f -> BindingFlag -> f (Node s f) -> ST s (MorphismRef s)
 newMorphismRef n bf ns = do
   let m = morphism ns
   setMorphism n m bf
   UnionFind.new m
 
-newUnboundMorphismRef :: Unifiable f => f (Node s f) -> ST s (MorphismRef s)
+newUnboundMorphismRef :: Constructible f => f (Node s f) -> ST s (MorphismRef s)
 newUnboundMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Node s f)
@@ -281,7 +292,7 @@ data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
 setMorphism :: Node s f -> Morphism -> BindingFlag -> ST s ()
 setMorphism n m = UnionFind.modify (n^.morphismRef) . max . mkMorphism m
 
-morphism :: Unifiable f => f (Node s f) -> Morphism
+morphism :: Constructible f => f (Node s f) -> Morphism
 morphism xs
   | isBottom xs = Polymorphic
   | otherwise = Monomorphic
