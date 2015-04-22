@@ -21,7 +21,7 @@ import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State (gets, StateT, evalStateT, modify)
+import Control.Monad.Trans.State (StateT, evalStateT, gets, modify)
 import Data.Bool
 import Data.Eq
 import Data.Foldable
