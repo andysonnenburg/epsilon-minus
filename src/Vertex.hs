@@ -196,17 +196,6 @@ unifyRebindState ref_x ref_y = do
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
-type Visited s = StateT IntSet (ST s)
-
-runVisited :: Visited s a -> ST s a
-runVisited = flip evalStateT mempty
-
-isVisited :: Int -> Visited s Bool
-isVisited = gets . IntSet.notMember
-
-visit :: Int -> Visited s ()
-visit = modify . IntSet.insert
-
 rebindGrafted :: Unifiable f => Ref s f -> Visited s ()
 rebindGrafted ref = do
   v <- lift $ ref^!unifyRef.contents.vertex
@@ -348,3 +337,14 @@ modifyM ref f = UnionFind.write ref =<< f =<< UnionFind.read ref
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM p m = p >>= bool (return ()) m
+
+type Visited s = StateT IntSet (ST s)
+
+runVisited :: Visited s a -> ST s a
+runVisited = flip evalStateT mempty
+
+isVisited :: Int -> Visited s Bool
+isVisited = gets . IntSet.notMember
+
+visit :: Int -> Visited s ()
+visit = modify . IntSet.insert
