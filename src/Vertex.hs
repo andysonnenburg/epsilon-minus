@@ -173,9 +173,9 @@ rebind ref_x ref_y = whenM (lift $ ref_x^.rebindRef /== ref_y^.rebindRef) $ do
   lift $ do
     unifyRebindRef ref_x ref_y
     whenM (isBottom <$> ref_x^!unifyRef.contents.vertex) $
-      runVisited $ rebindGrafted ref_x
-    whenM (isBottom <$> ref_y^!unifyRef.contents.vertex) $
       runVisited $ rebindGrafted ref_y
+    whenM (isBottom <$> ref_y^!unifyRef.contents.vertex) $
+      runVisited $ rebindGrafted ref_x
   MaybeT
     (zipMatch <$>
      ref_x^!unifyRef.contents.vertex <*>
