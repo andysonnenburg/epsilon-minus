@@ -173,9 +173,9 @@ rebind ref_x ref_y = whenM (lift $ ref_x^.rebindRef /== ref_y^.rebindRef) $ do
   lift $ do
     unifyRebindRef ref_x ref_y
     whenM (isBottom <$> ref_x^!unifyRef.contents.vertex) $
-      runRebind $ rebindGrafted ref_x
+      runVisited $ rebindGrafted ref_x
     whenM (isBottom <$> ref_y^!unifyRef.contents.vertex) $
-      runRebind $ rebindGrafted ref_y
+      runVisited $ rebindGrafted ref_y
   MaybeT
     (zipMatch <$>
      ref_x^!unifyRef.contents.vertex <*>
@@ -196,19 +196,25 @@ unifyRebindState ref_x ref_y = do
 meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
-type Rebind s = StateT IntSet (ST s)
+type Visited s = StateT IntSet (ST s)
 
-runRebind :: Rebind s a -> ST s a
-runRebind = flip evalStateT mempty
+runVisited :: Visited s a -> ST s a
+runVisited = flip evalStateT mempty
 
-rebindGrafted :: Unifiable f => Ref s f -> Rebind s ()
+isVisited :: Int -> Visited s Bool
+isVisited = gets . IntSet.notMember
+
+visit :: Int -> Visited s ()
+visit = modify . IntSet.insert
+
+rebindGrafted :: Unifiable f => Ref s f -> Visited s ()
 rebindGrafted ref = do
   v <- lift $ ref^!unifyRef.contents.vertex
-  whenM (gets $ IntSet.notMember $ vertexLabel v) $ do
-    modify $ IntSet.insert $ vertexLabel v
-    traverse_ (flip rebindVirtual ref) v
+  whenM (isVisited $ vertexLabel v) $ do
+    visit $ vertexLabel v
+    for_ v $ \ ref' -> rebindVirtual ref' ref
 
-rebindVirtual :: Unifiable f => Ref s f -> Ref s f -> Rebind s ()
+rebindVirtual :: Unifiable f => Ref s f -> Ref s f -> Visited s ()
 rebindVirtual ref ref' = do
   lift $ do
     b_1 <- ref^!rebindRef.contents
