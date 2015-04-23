@@ -212,12 +212,23 @@ rebindVirtual ref ref' = do
   rebindGrafted ref
 
 unify' :: Unifiable f => Ref s f -> Ref s f -> Unify s ()
-unify' ref_x ref_y = whenM (lift $ ref_x^.unifyRef /== ref_y^.unifyRef) $ do
+unify' ref_x ref_y = whenM (lift $ ref_x^.morphismRef /== ref_y^.morphismRef) $ do
+  lift $ unifyMorphismRef ref_x ref_y
   MaybeT
     (zipMatch <$>
      ref_x^!unifyRef.contents.vertex <*>
      ref_y^!unifyRef.contents.vertex) >>=
-     traverse_ (uncurry unify')
+    traverse_ (uncurry unify')
+
+
+unifyMorphismRef :: Ref s f -> Ref s f -> ST s ()
+unifyMorphismRef ref_x ref_y =
+  unifyMorphism (ref_x^.morphismRef) (ref_y^.morphismRef)
+
+unifyMorphism :: MorphismRef s -> MorphismRef s -> ST s ()
+unifyMorphism ref_x ref_y = do
+  UnionFind.write ref_x Monomorphic
+  UnionFind.union ref_x ref_y
 
 type RebindRef s f = UnionFind.Ref s (RebindState s f)
 
