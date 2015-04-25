@@ -66,6 +66,22 @@ import qualified UnionFind
 --       m <- readMorphismRef ref
 --       pure (bf, c, m)
 -- :}
+--
+-- >>> :{
+-- data B a = T | F deriving (Show, Functor, Foldable, Traversable)
+-- instance Vertex B where
+--   isBottom = \ case
+--     F -> True
+--     _ -> False
+-- :}
+--
+-- >>> :{
+-- data N a = Z | S a deriving (Show, Functor, Foldable, Traversable)
+-- instance Vertex N where
+--   isBottom = \ case
+--     Z -> True
+--     _ -> False
+-- :}
 
 class Traversable f => Matchable f where
   zipMatch :: f a -> f b -> Maybe (f (a, b))
@@ -105,14 +121,6 @@ morphismRef =
 data BindingFlag = Flexible | Rigid deriving (Show, Eq, Ord)
 
 -- |
--- >>> :{
--- data N a = Z | S a deriving (Show, Functor, Foldable, Traversable)
--- instance Vertex N where
---   isBottom = \ case
---     Z -> True
---     _ -> False
--- :}
---
 -- :{
 -- runST $ mdo
 --   x0 <- Vertex.new x1 Flexible Z
@@ -230,6 +238,24 @@ unifyMorphismRef ref_x ref_y = do
   UnionFind.write (ref_x^.morphismRef) Monomorphic
   UnionFind.union (ref_x^.morphismRef) (ref_y^.morphismRef)
 
+-- >>> :{
+-- runST $ do
+--   x <- Vertex.newUnbound T
+--   y <- Vertex.newUnbound T
+--   unionMorphismRef x y
+--   modifyMorphismRef x
+--   readMorphism x
+-- :}
+-- Monomorphic
+-- >>> :{
+-- runST $ do
+--   x <- Vertex.newUnbound Z
+--   y <- Vertex.newUnbound Z
+--   unionMorphismRef x y
+--   modifyMorphismRef x
+--   readMorphism x
+-- :}
+-- Polymorphic
 modifyMorphismRef :: Vertex f => Ref s f -> ST s ()
 modifyMorphismRef ref = do
   b <- readRebindBinder ref
@@ -248,6 +274,15 @@ unifyUnifyRef ref_x ref_y = do
   UnionFind.write (ref_x^.unifyRef) (b', bf', v', c')
   UnionFind.union (ref_x^.unifyRef) (ref_x^.unifyRef)
 
+-- |
+-- >>> meetVertex T F
+-- T
+-- >>> meetVertex F T
+-- T
+-- >>> meetVertex T T
+-- T
+-- >>> meetVertex F F
+-- F
 meetVertex :: Vertex f => f a -> f a -> f a
 meetVertex v_x v_y = case (isBottom v_x, isBottom v_y) of
   (False, True) -> v_x
@@ -309,6 +344,17 @@ checkMerge p b_x b_y =
     _ ->
       pure ()
 
+-- |
+-- >>> checkGraft R T F :: Maybe ()
+-- Nothing
+-- >>> checkGraft O F T :: Maybe ()
+-- Nothing
+-- >>> checkGraft G T F :: Maybe ()
+-- Just ()
+-- >>> checkGraft R T T :: Maybe ()
+-- Just ()
+-- >>> checkGraft R F F :: Maybe ()
+-- Just ()
 checkGraft :: (Alternative m, Vertex f) => Permission -> f a -> f b -> m ()
 checkGraft p v_x v_y = when (p /= G && isBottom v_x /= isBottom v_y) empty
 
