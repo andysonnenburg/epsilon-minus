@@ -238,22 +238,24 @@ unifyMorphismRef ref_x ref_y = do
   UnionFind.write (ref_x^.morphismRef) Monomorphic
   UnionFind.union (ref_x^.morphismRef) (ref_y^.morphismRef)
 
+-- |
 -- >>> :{
 -- runST $ do
 --   x <- Vertex.newUnbound T
 --   y <- Vertex.newUnbound T
---   unionMorphismRef x y
+--   unifyMorphismRef x y
 --   modifyMorphismRef x
---   readMorphism x
+--   readMorphismRef x
 -- :}
 -- Monomorphic
+--
 -- >>> :{
 -- runST $ do
 --   x <- Vertex.newUnbound Z
 --   y <- Vertex.newUnbound Z
---   unionMorphismRef x y
+--   unifyMorphismRef x y
 --   modifyMorphismRef x
---   readMorphism x
+--   readMorphismRef x
 -- :}
 -- Polymorphic
 modifyMorphismRef :: Vertex f => Ref s f -> ST s ()
@@ -441,7 +443,7 @@ newUnboundMorphismRef = UnionFind.new . morphism
 
 type Binder s f = Path (Ref s f)
 
-data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
+data Morphism = Monomorphic | Inert | Polymorphic deriving (Show, Eq, Ord)
 
 setMorphism :: Ref s f -> BindingFlag -> Morphism -> ST s ()
 setMorphism ref bf =
