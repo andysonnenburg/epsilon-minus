@@ -51,20 +51,8 @@ import qualified UnionFind
 -- >>> import qualified Vertex
 --
 -- >>> :{
--- let readUnifyRef ref = do
---       (_, bf, _, c) <- ref^!unifyRef.contents
---       pure (bf, c)
--- :}
---
--- >>> :{
--- let readMorphismRef ref = ref^!morphismRef.contents
--- :}
---
--- >>> :{
--- let readRefs ref = do
---       (bf, c) <- readUnifyRef ref
---       m <- readMorphismRef ref
---       pure (bf, c, m)
+-- let readRefs ref =
+--       (,,) <$> readBindingFlag ref <*> readColor ref <*> readMorphism ref
 -- :}
 --
 -- >>> :{
@@ -245,7 +233,7 @@ unifyMorphismRef ref_x ref_y = do
 --   y <- Vertex.newUnbound T
 --   unifyMorphismRef x y
 --   modifyMorphismRef x
---   readMorphismRef x
+--   readMorphism x
 -- :}
 -- Monomorphic
 --
@@ -255,7 +243,7 @@ unifyMorphismRef ref_x ref_y = do
 --   y <- Vertex.newUnbound Z
 --   unifyMorphismRef x y
 --   modifyMorphismRef x
---   readMorphismRef x
+--   readMorphism x
 -- :}
 -- Polymorphic
 modifyMorphismRef :: Vertex f => Ref s f -> ST s ()
@@ -375,6 +363,9 @@ readVertex = mget $ unifyRef.contents.vertex
 readColor :: Ref s f -> ST s Color
 readColor = mget $ unifyRef.contents.color
 
+readMorphism :: Ref s f -> ST s Morphism
+readMorphism = mget $ morphismRef.contents
+
 type RebindRef s f = UnionFind.Ref s (RebindState s f)
 
 newRebindRef :: Ref s f -> ST s (RebindRef s f)
@@ -476,10 +467,7 @@ mkColor = curry $ \ case
 data Permission = M | I | G | O | R deriving (Eq, Ord)
 
 getPermission :: Ref s f -> ST s Permission
-getPermission ref =
-  mkPermission <$>
-  ref^!unifyRef.contents.color <*>
-  ref^!morphismRef.contents
+getPermission ref = mkPermission <$> readColor ref <*> readMorphism ref
 
 mkPermission :: Color -> Morphism -> Permission
 mkPermission = curry $ \ case
