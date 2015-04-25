@@ -233,11 +233,11 @@ unifyMorphismRef ref_x ref_y = do
 modifyMorphismRef :: Vertex f => Ref s f -> ST s ()
 modifyMorphismRef ref = do
   b <- readRebindBinder ref
+  m <- morphism <$> readVertex ref
   whenJust (Path.uncons b) $ \ (ref', _) -> do
     bf <- readBindingFlag ref
-    m <- morphism <$> readVertex ref
     setMorphism ref' bf m
-    UnionFind.modify (ref^.morphismRef) $ max m
+  UnionFind.modify (ref^.morphismRef) $ max m
 
 unifyUnifyRef :: Vertex f => Ref s f -> Ref s f -> ST s ()
 unifyUnifyRef ref_x ref_y = do
@@ -287,7 +287,16 @@ checkRaise p b b' =
     _ ->
       empty
 
-checkWeaken :: Permission -> BindingFlag -> BindingFlag -> Unify s ()
+-- |
+-- >>> checkWeaken R Flexible Rigid :: Maybe ()
+-- Nothing
+-- >>> checkWeaken R Rigid Rigid :: Maybe ()
+-- Just ()
+-- >>> checkWeaken R Flexible Flexible :: Maybe ()
+-- Just ()
+-- >>> checkWeaken O Flexible Rigid :: Maybe ()
+-- Just ()
+checkWeaken :: Alternative m => Permission -> BindingFlag -> BindingFlag -> m ()
 checkWeaken p bf bf' = when (p == R && bf /= bf') empty
 
 checkMerge :: Permission -> Binder s f -> Binder s f -> Unify s ()
@@ -300,7 +309,7 @@ checkMerge p b_x b_y =
     _ ->
       pure ()
 
-checkGraft :: Vertex f => Permission -> f (Ref s f) -> f (Ref s f) -> Unify s ()
+checkGraft :: (Alternative m, Vertex f) => Permission -> f a -> f b -> m ()
 checkGraft p v_x v_y = when (p /= G && isBottom v_x /= isBottom v_y) empty
 
 readRebindBinder :: Ref s f -> ST s (Binder s f)

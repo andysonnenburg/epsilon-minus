@@ -57,6 +57,10 @@ import Text.Show
 -- :}
 --
 -- >>> :{
+-- let keep n xs = List.drop (length xs - n) xs
+-- :}
+--
+-- >>> :{
 -- let lca xs ys =
 --       fmap fst $
 --       List.dropWhile (uncurry (/=)) $
@@ -225,6 +229,17 @@ unsafeDropTree n n_t (Branch _ t_1 t_2) xs
     n_t' = n_t `div` 2
 unsafeDropTree _ _ _ xs = xs
 
+-- |
+-- >>> Path.keep 2 (Path.fromList "abc")
+-- Path.fromList "bc"
+--
+-- >>> Path.keep (-3) (Path.fromList "abc")
+-- Path.fromList ""
+--
+-- >>> Path.keep 4 (Path.fromList "abc")
+-- Path.fromList "abc"
+--
+-- prop> keep n (xs :: String) == toList (Path.keep n (Path.fromList xs))
 keep :: Int -> Path a -> Path a
 keep n xs = drop (length xs - n) xs
 
