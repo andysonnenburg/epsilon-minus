@@ -29,7 +29,7 @@ import Data.Function
 import Data.Int (Int)
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
-import Data.Maybe (Maybe (..))
+import Data.Maybe (Maybe (..), maybe)
 import Data.Monoid
 import Data.Ord
 import Data.Traversable
@@ -197,11 +197,11 @@ meetRebindState :: RebindState s f -> RebindState s f -> ST s (RebindState s f)
 meetRebindState = Path.lcaM ((===) `on` get rebindRef)
 
 rebindGrafted :: Unifiable f => Ref s f -> Visited s ()
-rebindGrafted ref = do
-  v <- lift $ ref^!unifyRef.contents.vertex
-  whenM (isVisited $ vertexLabel v) $ do
-    visit $ vertexLabel v
-    for_ v $ \ ref' -> rebindVirtual ref' ref
+rebindGrafted ref' = do
+  v' <- lift $ ref'^!unifyRef.contents.vertex
+  whenM (isVisited $ vertexLabel v') $ do
+    visit $ vertexLabel v'
+    for_ v' $ \ ref -> rebindVirtual ref ref'
 
 rebindVirtual :: Unifiable f => Ref s f -> Ref s f -> Visited s ()
 rebindVirtual ref ref' = do
@@ -212,23 +212,111 @@ rebindVirtual ref ref' = do
   rebindGrafted ref
 
 unify' :: Unifiable f => Ref s f -> Ref s f -> Unify s ()
-unify' ref_x ref_y = whenM (lift $ ref_x^.morphismRef /== ref_y^.morphismRef) $ do
-  lift $ unifyMorphismRef ref_x ref_y
-  MaybeT
-    (zipMatch <$>
-     ref_x^!unifyRef.contents.vertex <*>
-     ref_y^!unifyRef.contents.vertex) >>=
-    traverse_ (uncurry unify')
-
+unify' ref_x ref_y =
+  whenM (lift $ ref_x^.morphismRef /== ref_y^.morphismRef) $ do
+    check ref_x ref_y
+    lift $ unifyMorphismRef ref_x ref_y
+    MaybeT
+      (zipMatch <$>
+       ref_x^!unifyRef.contents.vertex <*>
+       ref_y^!unifyRef.contents.vertex) >>=
+      traverse_ (uncurry unify')
+    lift $ do
+      unifyUnifyRef ref_x ref_y
+      modifyMorphismRef ref_x
 
 unifyMorphismRef :: Ref s f -> Ref s f -> ST s ()
-unifyMorphismRef ref_x ref_y =
-  unifyMorphism (ref_x^.morphismRef) (ref_y^.morphismRef)
+unifyMorphismRef ref_x ref_y = do
+  UnionFind.write (ref_x^.morphismRef) Monomorphic
+  UnionFind.union (ref_x^.morphismRef) (ref_y^.morphismRef)
 
-unifyMorphism :: MorphismRef s -> MorphismRef s -> ST s ()
-unifyMorphism ref_x ref_y = do
-  UnionFind.write ref_x Monomorphic
-  UnionFind.union ref_x ref_y
+modifyMorphismRef :: Vertex f => Ref s f -> ST s ()
+modifyMorphismRef ref = do
+  b <- readRebindBinder ref
+  whenJust (Path.uncons b) $ \ (ref', _) -> do
+    bf <- readBindingFlag ref
+    m <- morphism <$> readVertex ref
+    setMorphism ref' bf m
+    UnionFind.modify (ref^.morphismRef) $ max m
+
+unifyUnifyRef :: Vertex f => Ref s f -> Ref s f -> ST s ()
+unifyUnifyRef ref_x ref_y = do
+  b' <- readRebindBinder ref_x
+  bf' <- max <$> readBindingFlag ref_x <*> readBindingFlag ref_y
+  v' <- meetVertex <$> readVertex ref_x <*> readVertex ref_y
+  c' <- max <$> readColor ref_x <*> readColor ref_y
+  UnionFind.write (ref_x^.unifyRef) (b', bf', v', c')
+  UnionFind.union (ref_x^.unifyRef) (ref_x^.unifyRef)
+
+meetVertex :: Vertex f => f a -> f a -> f a
+meetVertex v_x v_y = case (isBottom v_x, isBottom v_y) of
+  (False, True) -> v_x
+  (True, False) -> v_y
+  _ -> v_x
+
+check :: (Foldable f, Vertex f) => Ref s f -> Ref s f -> Unify s ()
+check ref_x ref_y = do
+  b' <- lift $ readRebindBinder ref_x
+  (p_x, b_x, bf_x, v_x) <- lift $ readCheckable ref_x
+  let b_x' = Path.keep (length b') b_x
+  (p_y, b_y, bf_y, v_y) <- lift $ readCheckable ref_y
+  let b_y' = Path.keep (length b') b_y
+  checkRaise p_x b_x b_x'
+  checkRaise p_y b_y b_y'
+  let bf' = max bf_x bf_y
+  checkWeaken p_x bf_x bf'
+  checkWeaken p_y bf_y bf'
+  let p' = max p_x p_y
+  checkMerge p' b_x' b_y'
+  checkGraft p' v_x v_y
+  where
+    readCheckable ref =
+      (,,,) <$>
+      getPermission ref <*>
+      readBinder ref <*>
+      readBindingFlag ref <*>
+      readVertex ref
+
+checkRaise :: Permission -> Binder s f -> Binder s f -> Unify s ()
+checkRaise p b b' =
+  when (p == R) $ case (Path.uncons b, Path.uncons b') of
+    (Nothing, Nothing) ->
+      pure ()
+    (Just (ref, _), Just (ref', _)) ->
+      whenM (lift $ ref^.rebindRef /== ref'^.rebindRef) empty
+    _ ->
+      empty
+
+checkWeaken :: Permission -> BindingFlag -> BindingFlag -> Unify s ()
+checkWeaken p bf bf' = when (p == R && bf /= bf') empty
+
+checkMerge :: Permission -> Binder s f -> Binder s f -> Unify s ()
+checkMerge p b_x b_y =
+  when (p == R) $ case (Path.uncons b_x, Path.uncons b_y) of
+    (Nothing, Nothing) ->
+      empty
+    (Just (ref_x, _), Just (ref_y, _)) ->
+      whenM (lift $ ref_x^.unifyRef === ref_y^.unifyRef) empty
+    _ ->
+      pure ()
+
+checkGraft :: Vertex f => Permission -> f (Ref s f) -> f (Ref s f) -> Unify s ()
+checkGraft p v_x v_y = when (p /= G && isBottom v_x /= isBottom v_y) empty
+
+readRebindBinder :: Ref s f -> ST s (Binder s f)
+readRebindBinder = mget $ rebindRef.contents
+
+readBinder :: Ref s f -> ST s (Binder s f)
+readBinder = mget $ unifyRef.contents.binder
+
+readBindingFlag :: Ref s f -> ST s BindingFlag
+readBindingFlag = mget $ unifyRef.contents.bindingFlag
+
+readVertex :: Ref s f -> ST s (f (Ref s f))
+readVertex = mget $ unifyRef.contents.vertex
+
+readColor :: Ref s f -> ST s Color
+readColor = mget $ unifyRef.contents.color
 
 type RebindRef s f = UnionFind.Ref s (RebindState s f)
 
@@ -288,9 +376,9 @@ unboundUnifyState v = (mempty, Flexible, v, Green)
 type MorphismRef s = UnionFind.Ref s Morphism
 
 newMorphismRef :: Vertex f => Ref s f -> BindingFlag -> f (Ref s f) -> ST s (MorphismRef s)
-newMorphismRef ref bf v = do
+newMorphismRef ref' bf v = do
   let m = morphism v
-  setMorphism ref m bf
+  setMorphism ref' bf m
   UnionFind.new m
 
 newUnboundMorphismRef :: Vertex f => f (Ref s f) -> ST s (MorphismRef s)
@@ -300,8 +388,9 @@ type Binder s f = Path (Ref s f)
 
 data Morphism = Monomorphic | Inert | Polymorphic deriving (Eq, Ord)
 
-setMorphism :: Ref s f -> Morphism -> BindingFlag -> ST s ()
-setMorphism ref m = UnionFind.modify (ref^.morphismRef) . max . mkMorphism m
+setMorphism :: Ref s f -> BindingFlag -> Morphism -> ST s ()
+setMorphism ref bf =
+  UnionFind.modify (ref^.morphismRef) . max . flip mkMorphism bf
 
 morphism :: Vertex f => f (Ref s f) -> Morphism
 morphism v
@@ -347,7 +436,10 @@ modifyM :: UnionFind.Ref s a -> (a -> ST s a) -> ST s ()
 modifyM ref f = UnionFind.write ref =<< f =<< UnionFind.read ref
 
 whenM :: Monad m => m Bool -> m () -> m ()
-whenM p m = p >>= bool (return ()) m
+whenM p m = p >>= bool (pure ()) m
+
+whenJust :: Applicative m => Maybe a -> (a -> m ()) -> m ()
+whenJust p f = maybe (pure ()) f p
 
 type Visited s = StateT IntSet (ST s)
 

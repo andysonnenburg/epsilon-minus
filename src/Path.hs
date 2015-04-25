@@ -8,6 +8,7 @@ module Path
        , fromList
        , uncons
        , drop
+       , keep
        , lca
        , lcaM
        ) where
@@ -205,24 +206,27 @@ uncons = \ case
 -- |
 -- prop> List.drop n (xs :: String) == toList (Path.drop n (Path.fromList xs))
 drop :: Int -> Path a -> Path a
-drop i xs = i `seq` case xs of
+drop n xs = n `seq` case xs of
   Cons n_t t ys
-    | i >= 1 -> case compare i n_t of
-      LT -> unsafeDropTree i n_t t ys
+    | n >= 1 -> case compare n n_t of
+      LT -> unsafeDropTree n n_t t ys
       EQ -> ys
-      GT -> drop (i - n_t) ys
+      GT -> drop (n - n_t) ys
   _ -> xs
 
 unsafeDropTree :: Int -> Int -> Tree a -> Path a -> Path a
-unsafeDropTree i n_t (Branch _ t_1 t_2) xs
-  | i == 1 = consTrees n_t' t_1 t_2 xs
-  | otherwise = case compare i (n_t' + 1) of
-    LT -> unsafeDropTree (i - 1) n_t' t_1 (Cons n_t' t_2 xs)
+unsafeDropTree n n_t (Branch _ t_1 t_2) xs
+  | n == 1 = consTrees n_t' t_1 t_2 xs
+  | otherwise = case compare n (n_t' + 1) of
+    LT -> unsafeDropTree (n - 1) n_t' t_1 (Cons n_t' t_2 xs)
     EQ -> Cons n_t' t_2 xs
-    GT -> unsafeDropTree (i - n_t' - 1) n_t' t_2 xs
+    GT -> unsafeDropTree (n - n_t' - 1) n_t' t_2 xs
   where
     n_t' = n_t `div` 2
 unsafeDropTree _ _ _ xs = xs
+
+keep :: Int -> Path a -> Path a
+keep n xs = drop (length xs - n) xs
 
 -- |
 -- prop> \ (TwoIntPaths xs ys) -> lca xs ys == toList (Path.lca (Path.fromList xs) (Path.fromList ys))
