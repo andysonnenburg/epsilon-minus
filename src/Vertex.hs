@@ -252,11 +252,11 @@ meetVertex v_x v_y = case (isBottom v_x, isBottom v_y) of
 
 check :: (Foldable v, Vertex v) => Ref s v -> Ref s v -> Unify s ()
 check ref_x ref_y = do
-  b' <- lift $ readRebindBinder ref_x
+  n <- lift $ length <$> readRebindBinder ref_x
   (b_x, bf_x, v_x, p_x) <- lift $ getCheckState ref_x
-  let b_x' = Path.keep (length b') b_x
+  let b_x' = Path.keep n b_x
   (b_y, bf_y, v_y, p_y) <- lift $ getCheckState ref_y
-  let b_y' = Path.keep (length b') b_y
+  let b_y' = Path.keep n b_y
   checkRaise p_x b_x b_x'
   checkRaise p_y b_y b_y'
   checkWeaken p_x bf_x bf_y
