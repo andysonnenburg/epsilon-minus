@@ -294,9 +294,10 @@ check ref_x ref_y = do
   let bf' = max bf_x bf_y
   checkWeaken p_x bf_x bf'
   checkWeaken p_y bf_y bf'
-  let p' = max p_x p_y
-  checkMerge p' b_x' b_y'
-  checkGraft p' v_x v_y
+  checkMerge p_x b_x' b_y'
+  checkMerge p_y b_y' b_x'
+  checkGraft p_x v_x v_y
+  checkGraft p_y v_y v_x
 
 getCheckState :: Ref s f -> ST s (Binder s f, BindingFlag, f (Ref s f), Permission)
 getCheckState ref =
